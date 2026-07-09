@@ -1,0 +1,66 @@
+name: Probe live Pages site
+
+on: workflow_dispatch
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: HTTP checks
+        run: |
+          B=https://gilhzn.github.io/Parallax-AI
+          echo "===== ROOT HEADERS ====="
+          curl -sI "$B/" | head -25
+          echo "===== ROOT BODY (first 1200 chars) ====="
+          curl -s "$B/" | head -c 1200; echo
+          echo "===== SAMPLE.SPLAT HEADERS ====="
+          curl -sI "$B/sample.splat" | head -25
+          echo "===== SAMPLE.SPLAT RANGE REQUEST (bytes 0-63) ====="
+          curl -s -H "Range: bytes=0-63" -o /dev/null -D - "$B/sample.splat" | head -25
+          echo "===== /tour/sample (SPA fallback) ====="
+          curl -s -o /dev/null -w "%{http_code}\n" "$B/tour/sample"
+          echo "===== ASSET FILES ====="
+          curl -s "$B/" | grep -oE '/Parallax-AI/[a-zA-Z0-9/._-]+\.(js|css|svg|webmanifest)' | sort -u | while read -r a; do
+            printf "%s " "$(curl -s -o /dev/null -w '%{http_code} %{size_download}' "https://gilhzn.github.io$a")"; echo "$a"
+          done
+
+      - name: Browser probe
+        run: |
+          npm init -y > /dev/null
+          npm i --no-audit --no-fund playwright > /dev/null
+          npx playwright install --with-deps chromium > /dev/null 2>&1
+          cat > probe.mjs <<'EOF'
+          import { chromium } from 'playwright';
+          const browser = await chromium.launch();
+          const page = await browser.newPage({ viewport: { width: 390, height: 800 } });
+          page.on('console', m => console.log('[console]', m.type(), m.text().slice(0, 300)));
+          page.on('pageerror', e => console.log('[pageerror]', e.message.slice(0, 500)));
+          page.on('requestfailed', r => console.log('[reqfail]', r.url().slice(0, 150), r.failure()?.errorText));
+          page.on('response', r => { if (r.status() >= 400) console.log('[http]', r.status(), r.url().slice(0, 150)); });
+
+          console.log('===== ROOT PAGE =====');
+          await page.goto('https://gilhzn.github.io/Parallax-AI/', { waitUntil: 'networkidle', timeout: 60000 });
+          await page.waitForTimeout(4000);
+          console.log('ROOT INNERHTML:', (await page.evaluate(() => document.getElementById('root')?.innerHTML?.slice(0, 500))) || 'EMPTY');
+          await page.screenshot({ path: 'root.png' });
+
+          console.log('===== TOUR PAGE =====');
+          await page.goto('https://gilhzn.github.io/Parallax-AI/tour/sample', { waitUntil: 'networkidle', timeout: 60000 });
+          for (let i = 1; i <= 6; i++) {
+            await page.waitForTimeout(5000);
+            const spinner = await page.locator('.spinner').count();
+            const canvas = await page.locator('canvas').count();
+            console.log(`t=${i * 5}s spinner=${spinner} canvas=${canvas}`);
+            if (!spinner && canvas) break;
+          }
+          console.log('TOUR INNERHTML:', (await page.evaluate(() => document.getElementById('root')?.innerHTML?.slice(0, 500))) || 'EMPTY');
+          await page.screenshot({ path: 'tour.png' });
+          await browser.close();
+          EOF
+          node probe.mjs
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: probe-screenshots
+          path: "*.png"
