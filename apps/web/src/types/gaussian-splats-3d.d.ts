@@ -25,6 +25,13 @@ declare module '@mkkellogg/gaussian-splats-3d' {
     [key: string]: unknown;
   }
 
+  export const SceneFormat: {
+    Splat: number;
+    KSplat: number;
+    Ply: number;
+    Spz: number;
+  };
+
   export const SceneRevealMode: {
     Default: number;
     Gradual: number;

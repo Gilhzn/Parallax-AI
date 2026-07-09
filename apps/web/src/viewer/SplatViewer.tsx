@@ -53,26 +53,57 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
       (window as any).__viewer = viewer;
     }
 
-    // Progressive loading requires HTTP range support (Content-Length +
-    // Accept-Ranges); some static/dev servers lack it, so probe first and
-    // load once in the right mode.
-    const supportsRanges = fetch(splatUrl, { method: 'HEAD' })
-      .then(
-        (head) =>
-          head.ok &&
-          !!head.headers.get('content-length') &&
-          (head.headers.get('accept-ranges') ?? '').includes('bytes'),
-      )
-      .catch(() => false);
+    let objectUrl: string | null = null;
 
-    supportsRanges
-      .then((progressive) =>
-        viewer.addSplatScene(splatUrl, {
-          progressiveLoad: progressive && !params.has('noprogressive'),
+    // The library's own downloader assumes Content-Length equals the byte
+    // count it will read from the stream. Hosts that gzip binary files in
+    // transit (e.g. GitHub Pages) or omit ranges break that assumption, so:
+    //  - stream progressively only when a probe shows it is safe
+    //    (Content-Length + Accept-Ranges + no Content-Encoding);
+    //  - otherwise download via plain fetch (the browser handles any
+    //    compression transparently) and hand the library a Blob URL.
+    // The library's AbortablePromise also swallows rejections when adopted
+    // by a native promise chain, so wire resolve/reject explicitly.
+    const addScene = (url: string, opts: Record<string, unknown>) =>
+      new Promise<void>((resolve, reject) => {
+        const p = viewer.addSplatScene(url, {
           showLoadingUI: true,
           splatAlphaRemovalThreshold: 5,
-        }),
-      )
+          ...opts,
+        }) as unknown as { then(cb: () => void): void; catch?(cb: (e: unknown) => void): void };
+        p.then(() => resolve());
+        p.catch?.((e: unknown) => reject(e));
+      });
+
+    const load = async () => {
+      let progressive = !params.has('noprogressive');
+      if (progressive) {
+        try {
+          const head = await fetch(splatUrl, { method: 'HEAD' });
+          progressive =
+            head.ok &&
+            !!head.headers.get('content-length') &&
+            (head.headers.get('accept-ranges') ?? '').includes('bytes') &&
+            !head.headers.get('content-encoding');
+        } catch {
+          progressive = false;
+        }
+      }
+      if (progressive) {
+        await addScene(splatUrl, { progressiveLoad: true });
+      } else {
+        const resp = await fetch(splatUrl);
+        if (!resp.ok) throw new Error(`Could not download the scene (HTTP ${resp.status})`);
+        const buffer = await resp.arrayBuffer();
+        objectUrl = URL.createObjectURL(new Blob([buffer]));
+        await addScene(objectUrl, {
+          progressiveLoad: false,
+          format: GaussianSplats3D.SceneFormat.Splat,
+        });
+      }
+    };
+
+    load()
       .then(() => {
         if (disposed) return;
         viewer.start();
@@ -94,6 +125,7 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
       disposed = true;
       cancelAnimationFrame(raf);
       controls?.dispose();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
       viewer.dispose().catch(() => {
         /* viewer may already be gone */
       });
