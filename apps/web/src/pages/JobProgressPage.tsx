@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { getJob, type JobStatus } from '../api/client';
+import { getJob, isDemoJob, type JobStatus } from '../api/client';
 
 const STEPS: { key: string; label: string; detail: string }[] = [
   { key: 'upload', label: 'Uploaded', detail: 'Video stored securely' },
@@ -54,10 +54,21 @@ export default function JobProgressPage() {
   return (
     <div className="page">
       <Link className="brand" to="/">
-        <img src="/icon.svg" alt="" />
+        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
         <h1>SpatialScan</h1>
       </Link>
       <p className="tagline">Building your tour — this usually takes a few minutes.</p>
+
+      {jobId && isDemoJob(jobId) && (
+        <div className="card" style={{ borderColor: 'var(--accent-2)' }}>
+          <strong>Demo mode</strong>
+          <p className="hint" style={{ margin: '6px 0 0' }}>
+            No processing backend is connected on this deployment, so the pipeline is simulated
+            and your tour will show the built-in sample scene. Run the full stack locally
+            (<code>make demo</code>) to process real videos.
+          </p>
+        </div>
+      )}
 
       <div className="card">
         <div className="bar">

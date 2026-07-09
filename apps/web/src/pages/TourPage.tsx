@@ -14,7 +14,7 @@ export default function TourPage() {
     if (!tourId) return;
     if (tourId === 'sample') {
       // Committed demo scene — works with no backend at all.
-      setSplatUrl('/sample.splat');
+      setSplatUrl(`${import.meta.env.BASE_URL}sample.splat`);
       return;
     }
     getTour(tourId)

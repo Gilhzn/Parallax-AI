@@ -53,12 +53,26 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
       (window as any).__viewer = viewer;
     }
 
-    viewer
-      .addSplatScene(splatUrl, {
-        progressiveLoad: !params.has('noprogressive'),
-        showLoadingUI: true,
-        splatAlphaRemovalThreshold: 5,
-      })
+    // Progressive loading requires HTTP range support (Content-Length +
+    // Accept-Ranges); some static/dev servers lack it, so probe first and
+    // load once in the right mode.
+    const supportsRanges = fetch(splatUrl, { method: 'HEAD' })
+      .then(
+        (head) =>
+          head.ok &&
+          !!head.headers.get('content-length') &&
+          (head.headers.get('accept-ranges') ?? '').includes('bytes'),
+      )
+      .catch(() => false);
+
+    supportsRanges
+      .then((progressive) =>
+        viewer.addSplatScene(splatUrl, {
+          progressiveLoad: progressive && !params.has('noprogressive'),
+          showLoadingUI: true,
+          splatAlphaRemovalThreshold: 5,
+        }),
+      )
       .then(() => {
         if (disposed) return;
         viewer.start();

@@ -47,7 +47,7 @@ export default function UploadPage() {
   return (
     <div className="page">
       <a className="brand" href="/">
-        <img src="/icon.svg" alt="" />
+        <img src={`${import.meta.env.BASE_URL}icon.svg`} alt="" />
         <h1>SpatialScan</h1>
       </a>
       <p className="tagline">

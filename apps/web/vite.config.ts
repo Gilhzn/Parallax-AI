@@ -4,6 +4,8 @@ import { defineConfig } from 'vite';
 
 // /api and /media are proxied to the FastAPI dev server (make demo).
 export default defineConfig({
+  // Sub-path hosting (e.g. GitHub Pages serves at /Parallax-AI/).
+  base: process.env.BASE_PATH || '/',
   plugins: [react()],
   server: {
     proxy: {
