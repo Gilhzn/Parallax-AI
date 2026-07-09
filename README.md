@@ -4,6 +4,8 @@
 
 > 🇮🇱 מסמך האיפיון הראשי בעברית: [docs/PRD.he.md](docs/PRD.he.md) · English PRD: [docs/PRD.en.md](docs/PRD.en.md)
 
+**🔗 Live demo:** <https://gilhzn.github.io/Parallax-AI/> — the full web app in *demo mode* (no GPU backend attached): upload any short video to see the simulated pipeline, or jump straight into the [sample 3D tour](https://gilhzn.github.io/Parallax-AI/tour/sample). Deployed automatically to GitHub Pages on every push (`.github/workflows/pages.yml`).
+
 ## How it works
 
 ```
