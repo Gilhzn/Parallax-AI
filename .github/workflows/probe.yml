@@ -12,20 +12,10 @@ jobs:
       - name: HTTP checks
         run: |
           B=https://gilhzn.github.io/Parallax-AI
-          echo "===== ROOT HEADERS ====="
-          curl -sI "$B/" | head -25
-          echo "===== ROOT BODY (first 1200 chars) ====="
-          curl -s "$B/" | head -c 1200; echo
-          echo "===== SAMPLE.SPLAT HEADERS ====="
-          curl -sI "$B/sample.splat" | head -25
-          echo "===== SAMPLE.SPLAT RANGE REQUEST (bytes 0-63) ====="
-          curl -s -H "Range: bytes=0-63" -o /dev/null -D - "$B/sample.splat" | head -25
-          echo "===== /tour/sample (SPA fallback) ====="
-          curl -s -o /dev/null -w "%{http_code}\n" "$B/tour/sample"
-          echo "===== ASSET FILES ====="
-          curl -s "$B/" | grep -oE '/Parallax-AI/[a-zA-Z0-9/._-]+\.(js|css|svg|webmanifest)' | sort -u | while read -r a; do
-            printf "%s " "$(curl -s -o /dev/null -w '%{http_code} %{size_download}' "https://gilhzn.github.io$a")"; echo "$a"
-          done
+          echo "===== SPLAT WITH BROWSER ACCEPT-ENCODING (is it gzipped in transit?) ====="
+          curl -s -o /dev/null -D - -H "Accept-Encoding: gzip, deflate, br, zstd" "$B/sample.splat" | grep -iE "HTTP|content-encoding|content-length|transfer-encoding|accept-ranges"
+          echo "===== RANGE REQUEST WITH ACCEPT-ENCODING ====="
+          curl -s -o /dev/null -D - -H "Accept-Encoding: gzip, deflate, br, zstd" -H "Range: bytes=0-65535" "$B/sample.splat" | grep -iE "HTTP|content-encoding|content-length|content-range"
 
       - name: Browser probe
         run: |
@@ -47,17 +37,21 @@ jobs:
           console.log('ROOT INNERHTML:', (await page.evaluate(() => document.getElementById('root')?.innerHTML?.slice(0, 500))) || 'EMPTY');
           await page.screenshot({ path: 'root.png' });
 
-          console.log('===== TOUR PAGE =====');
-          await page.goto('https://gilhzn.github.io/Parallax-AI/tour/sample', { waitUntil: 'networkidle', timeout: 60000 });
-          for (let i = 1; i <= 6; i++) {
-            await page.waitForTimeout(5000);
-            const spinner = await page.locator('.spinner').count();
-            const canvas = await page.locator('canvas').count();
-            console.log(`t=${i * 5}s spinner=${spinner} canvas=${canvas}`);
-            if (!spinner && canvas) break;
+          for (const [label, url] of [
+            ['TOUR PROGRESSIVE', 'https://gilhzn.github.io/Parallax-AI/tour/sample'],
+            ['TOUR NOPROGRESSIVE', 'https://gilhzn.github.io/Parallax-AI/tour/sample?noprogressive=1'],
+          ]) {
+            console.log(`===== ${label} =====`);
+            await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
+            for (let i = 1; i <= 6; i++) {
+              await page.waitForTimeout(5000);
+              const spinner = await page.locator('.spinner').count();
+              const canvas = await page.locator('canvas').count();
+              console.log(`t=${i * 5}s spinner=${spinner} canvas=${canvas}`);
+              if (!spinner && canvas) { console.log(`${label}: SCENE LOADED OK`); break; }
+            }
+            await page.screenshot({ path: `${label.toLowerCase().replaceAll(' ', '-')}.png` });
           }
-          console.log('TOUR INNERHTML:', (await page.evaluate(() => document.getElementById('root')?.innerHTML?.slice(0, 500))) || 'EMPTY');
-          await page.screenshot({ path: 'tour.png' });
           await browser.close();
           EOF
           node probe.mjs
