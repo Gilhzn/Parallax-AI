@@ -37,21 +37,40 @@ jobs:
           console.log('ROOT INNERHTML:', (await page.evaluate(() => document.getElementById('root')?.innerHTML?.slice(0, 500))) || 'EMPTY');
           await page.screenshot({ path: 'root.png' });
 
-          for (const [label, url] of [
-            ['TOUR PROGRESSIVE', 'https://gilhzn.github.io/Parallax-AI/tour/sample'],
-            ['TOUR NOPROGRESSIVE', 'https://gilhzn.github.io/Parallax-AI/tour/sample?noprogressive=1'],
-          ]) {
-            console.log(`===== ${label} =====`);
-            await page.goto(url, { waitUntil: 'networkidle', timeout: 60000 });
-            for (let i = 1; i <= 6; i++) {
-              await page.waitForTimeout(5000);
-              const spinner = await page.locator('.spinner').count();
-              const canvas = await page.locator('canvas').count();
-              console.log(`t=${i * 5}s spinner=${spinner} canvas=${canvas}`);
-              if (!spinner && canvas) { console.log(`${label}: SCENE LOADED OK`); break; }
-            }
-            await page.screenshot({ path: `${label.toLowerCase().replaceAll(' ', '-')}.png` });
+          const inPageFetch = () =>
+            page.evaluate(async () => {
+              try {
+                const resp = await fetch('/Parallax-AI/sample.splat');
+                const buf = await resp.arrayBuffer();
+                return { ok: resp.ok, status: resp.status, bytes: buf.byteLength, ct: resp.headers.get('content-type'), enc: resp.headers.get('content-encoding') };
+              } catch (e) { return { error: String(e) }; }
+            });
+
+          console.log('===== IN-PAGE FETCH FROM ROOT (200 document) =====');
+          console.log(JSON.stringify(await inPageFetch()));
+
+          console.log('===== CLIENT-SIDE NAV ROOT -> TOUR =====');
+          await page.click('text=Explore a demo tour');
+          for (let i = 1; i <= 6; i++) {
+            await page.waitForTimeout(5000);
+            const spinner = await page.locator('.spinner').count();
+            const canvas = await page.locator('canvas').count();
+            console.log(`t=${i * 5}s spinner=${spinner} canvas=${canvas}`);
+            if (!spinner && canvas) { console.log('CLIENT-NAV TOUR: SCENE LOADED OK'); break; }
           }
+          await page.screenshot({ path: 'tour-clientnav.png' });
+
+          console.log('===== DIRECT DEEP LINK /tour/sample (404 document) =====');
+          await page.goto('https://gilhzn.github.io/Parallax-AI/tour/sample', { waitUntil: 'networkidle', timeout: 60000 });
+          console.log('IN-PAGE FETCH FROM 404 DOCUMENT:', JSON.stringify(await inPageFetch()));
+          for (let i = 1; i <= 3; i++) {
+            await page.waitForTimeout(5000);
+            const spinner = await page.locator('.spinner').count();
+            const canvas = await page.locator('canvas').count();
+            console.log(`t=${i * 5}s spinner=${spinner} canvas=${canvas}`);
+            if (!spinner && canvas) { console.log('DEEP-LINK TOUR: SCENE LOADED OK'); break; }
+          }
+          await page.screenshot({ path: 'tour-deeplink.png' });
           await browser.close();
           EOF
           node probe.mjs
