@@ -1,0 +1,68 @@
+# Full local development stack: redis (queue + job state), minio (S3-compatible
+# storage), the API gateway, and a mock GPU worker.
+#
+#   docker compose up --build
+#   cd apps/web && npm run dev        # web app on :5173, proxying to :8000
+#
+# NOTE: presigned URLs reference the in-network hostname `minio`. To open
+# tour/media links from your host browser, add `127.0.0.1 minio` to /etc/hosts
+# (ports are already published). The zero-Docker alternative: `make demo`.
+
+services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: spatialscan
+      MINIO_ROOT_PASSWORD: spatialscan-dev
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio-data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      until mc alias set local http://minio:9000 spatialscan spatialscan-dev; do sleep 1; done;
+      mc mb --ignore-existing local/spatialscan;
+      exit 0"
+
+  api:
+    build: services/api
+    depends_on:
+      - redis
+      - minio-init
+    environment:
+      STORAGE_BACKEND: s3
+      S3_BUCKET: spatialscan
+      S3_ENDPOINT_URL: http://minio:9000
+      AWS_ACCESS_KEY_ID: spatialscan
+      AWS_SECRET_ACCESS_KEY: spatialscan-dev
+      JOB_TRIGGER: redis
+      REDIS_URL: redis://redis:6379/0
+      CORS_ORIGINS: "*"
+    ports:
+      - "8000:8000"
+
+  worker:
+    build:
+      context: services/worker
+      dockerfile: Dockerfile.mock
+    depends_on:
+      - redis
+      - minio-init
+    environment:
+      PIPELINE_MODE: mock
+      REDIS_URL: redis://redis:6379/0
+
+volumes:
+  minio-data:
