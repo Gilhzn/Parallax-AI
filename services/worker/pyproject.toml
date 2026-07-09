@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "spatialscan-worker"
+version = "0.1.0"
+description = "SpatialScan GPU worker - video -> COLMAP -> 3D Gaussian Splatting -> .splat"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy>=1.26",
+    "redis>=5.0",
+    "httpx>=0.27",
+]
+
+[project.optional-dependencies]
+# Installed only inside the GPU Docker image / Colab - never needed for mock mode.
+gpu = [
+    "torch>=2.2",
+    "gsplat>=1.0",
+    "runpod>=1.6",
+]
+dev = [
+    "pytest>=8.0",
+    "fakeredis>=2.21",
+    "ruff>=0.4",
+]
+
+[tool.setuptools.packages.find]
+include = ["spatialscan_worker*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
