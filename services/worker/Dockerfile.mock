@@ -1,0 +1,15 @@
+# SpatialScan mock worker — slim image for local docker-compose development.
+# Runs the same queue worker code path as production dev, but the pipeline
+# produces a synthetic room .splat (no GPU / ffmpeg / COLMAP required).
+
+FROM python:3.11-slim
+
+ENV PYTHONUNBUFFERED=1
+
+WORKDIR /app
+COPY pyproject.toml ./
+COPY spatialscan_worker ./spatialscan_worker
+RUN pip install --no-cache-dir -e .
+
+ENV PIPELINE_MODE=mock
+CMD ["python", "-m", "spatialscan_worker.queue_worker"]
