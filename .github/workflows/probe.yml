@@ -1,6 +1,9 @@
 name: Probe live Pages site
 
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    paths: [".github/workflows/probe.yml"]
 
 jobs:
   probe:
