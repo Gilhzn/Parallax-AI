@@ -25,6 +25,12 @@ declare module '@mkkellogg/gaussian-splats-3d' {
     [key: string]: unknown;
   }
 
+  export const SceneRevealMode: {
+    Default: number;
+    Gradual: number;
+    Instant: number;
+  };
+
   export class Viewer {
     constructor(options?: ViewerOptions);
     camera: THREE.PerspectiveCamera;

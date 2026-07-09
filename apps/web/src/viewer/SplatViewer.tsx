@@ -26,32 +26,50 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
     let controls: FirstPersonControls | null = null;
     let raf = 0;
 
+    // Dev/QA overrides: /tour/xyz?pos=0,1.5,2.2&look=0,1,0&nocontrols=1
+    const params = new URLSearchParams(window.location.search);
+    const vec = (name: string, fallback: [number, number, number]) => {
+      const raw = params.get(name)?.split(',').map(Number);
+      return raw && raw.length === 3 && raw.every(Number.isFinite)
+        ? (raw as [number, number, number])
+        : fallback;
+    };
+
     const viewer = new GaussianSplats3D.Viewer({
       rootElement: root,
       cameraUp: [0, 1, 0],
-      initialCameraPosition: [0, 1.5, 2.2],
-      initialCameraLookAt: [0, 1.2, 0],
+      initialCameraPosition: vec('pos', [0, 1.5, 2.2]),
+      initialCameraLookAt: vec('look', [0, 1.2, 0]),
       useBuiltInControls: false,
       selfDrivenMode: true,
       sharedMemoryForWorkers: false,
+      // The default radial reveal animation advances per frame, so on slower
+      // devices the scene looks clipped for many seconds. Progressive loading
+      // already gives the blurry->sharp effect we want; reveal instantly.
+      sceneRevealMode: GaussianSplats3D.SceneRevealMode.Instant,
     });
     viewer.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    if (import.meta.env.DEV) {
+      (window as any).__viewer = viewer;
+    }
 
     viewer
       .addSplatScene(splatUrl, {
-        progressiveLoad: true,
+        progressiveLoad: !params.has('noprogressive'),
         showLoadingUI: true,
         splatAlphaRemovalThreshold: 5,
       })
       .then(() => {
         if (disposed) return;
         viewer.start();
-        controls = new FirstPersonControls(viewer.camera, viewer.renderer.domElement);
-        const tick = () => {
-          controls?.update();
+        if (!params.has('nocontrols')) {
+          controls = new FirstPersonControls(viewer.camera, viewer.renderer.domElement);
+          const tick = () => {
+            controls?.update();
+            raf = requestAnimationFrame(tick);
+          };
           raf = requestAnimationFrame(tick);
-        };
-        raf = requestAnimationFrame(tick);
+        }
         setLoading(false);
       })
       .catch((e: unknown) => {
