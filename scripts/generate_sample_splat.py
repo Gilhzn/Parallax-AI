@@ -12,7 +12,7 @@ from spatialscan_worker.synthetic import synthetic_room_splats  # noqa: E402
 
 
 def main() -> None:
-    cloud = synthetic_room_splats(total=5000, seed=42)
+    cloud = synthetic_room_splats(seed=42)
     data = write_splat(cloud)
     out = REPO_ROOT / "apps" / "web" / "public" / "sample.splat"
     out.parent.mkdir(parents=True, exist_ok=True)

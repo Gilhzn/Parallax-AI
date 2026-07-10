@@ -38,8 +38,8 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
     const viewer = new GaussianSplats3D.Viewer({
       rootElement: root,
       cameraUp: [0, 1, 0],
-      initialCameraPosition: vec('pos', [0, 1.5, 2.2]),
-      initialCameraLookAt: vec('look', [0, 1.2, 0]),
+      initialCameraPosition: vec('pos', [1.75, 1.5, 1.55]),
+      initialCameraLookAt: vec('look', [-1.0, 0.85, -0.55]),
       useBuiltInControls: false,
       selfDrivenMode: true,
       sharedMemoryForWorkers: false,

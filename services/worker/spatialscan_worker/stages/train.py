@@ -82,4 +82,4 @@ def _train_mock(iterations: int, on_progress: ProgressFn | None) -> SplatCloud:
         time.sleep(0.05)
         if on_progress:
             on_progress(i / steps)
-    return synthetic_room_splats(total=5000, seed=int(iterations) % 2**31)
+    return synthetic_room_splats(seed=int(iterations) % 2**31)
