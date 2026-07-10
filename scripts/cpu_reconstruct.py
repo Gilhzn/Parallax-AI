@@ -165,6 +165,8 @@ def resolve_project(root: Path, work: Path) -> Path | None:
 def train_opensplat(
     opensplat: Path, project: Path, iterations: int, out_ply: Path, downscale: int = 1
 ) -> None:
+    # opensplat runs with cwd=project, so every path must be absolute.
+    opensplat, project, out_ply = opensplat.resolve(), project.resolve(), out_ply.resolve()
     run(
         [opensplat, project, "--cpu", "-n", iterations, "-d", downscale, "-o", out_ply],
         cwd=project,
