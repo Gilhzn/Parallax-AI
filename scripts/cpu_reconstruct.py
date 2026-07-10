@@ -115,8 +115,60 @@ def run_colmap(images_dir: Path, work: Path) -> Path:
     return project
 
 
-def train_opensplat(opensplat: Path, project: Path, iterations: int, out_ply: Path) -> None:
-    run([opensplat, project, "-n", iterations, "-o", out_ply], cwd=project)
+IMAGE_EXTS = {".jpg", ".jpeg", ".png"}
+
+
+def list_images(d: Path) -> list[Path]:
+    return [p for p in d.iterdir() if p.suffix.lower() in IMAGE_EXTS]
+
+
+def find_images_dir(root: Path) -> Path | None:
+    """The directory under root holding the most images (>=6)."""
+    best, best_count = None, 5
+    for d in [root, *[p for p in root.rglob("*") if p.is_dir()]]:
+        n = len(list_images(d))
+        if n > best_count:
+            best, best_count = d, n
+    return best
+
+
+def dump_tree(root: Path, limit: int = 60) -> None:
+    print(f"contents of {root}:")
+    for i, p in enumerate(sorted(root.rglob("*"))):
+        if i >= limit:
+            print("  ...")
+            break
+        print(f"  {p.relative_to(root)}")
+
+
+def resolve_project(root: Path, work: Path) -> Path | None:
+    """Normalize any archive layout into project/{images,sparse/0}.
+
+    Finds a COLMAP sparse model (cameras.bin/txt) and an images directory
+    anywhere under root; returns None when no reconstruction exists.
+    """
+    dump_tree(root)
+    marker = next(root.rglob("cameras.bin"), None) or next(root.rglob("cameras.txt"), None)
+    if marker is None:
+        return None
+    model_dir = marker.parent
+    images_dir = find_images_dir(root)
+    if images_dir is None:
+        raise SystemExit(f"found sparse model {model_dir} but no images under {root}")
+    project = work / "project"
+    (project / "sparse").mkdir(parents=True, exist_ok=True)
+    shutil.copytree(images_dir, project / "images")
+    shutil.copytree(model_dir, project / "sparse" / "0")
+    return project
+
+
+def train_opensplat(
+    opensplat: Path, project: Path, iterations: int, out_ply: Path, downscale: int = 1
+) -> None:
+    run(
+        [opensplat, project, "--cpu", "-n", iterations, "-d", downscale, "-o", out_ply],
+        cwd=project,
+    )
     if not out_ply.exists():
         # some versions write into the project dir regardless of -o
         candidates = list(project.glob("*.ply")) + list(project.rglob("splat.ply"))
@@ -147,21 +199,27 @@ def main() -> None:
     started = time.time()
 
     frame_count = None
+    train_downscale = 1
     if args.video:
         frame_count = extract_frames(args.video, work / "frames", args.max_frames, args.downscale)
         project = run_colmap(work / "frames", work)
     else:
-        project = args.project
-        if not (project / "sparse").exists():
-            # tolerate one level of nesting in downloaded sample archives
-            nested = next((d for d in project.rglob("sparse") if d.is_dir()), None)
-            if nested is None:
-                raise SystemExit(f"no sparse/ reconstruction found under {project}")
-            project = nested.parent
-        print(f"using existing COLMAP project: {project}")
+        project = resolve_project(args.project, work)
+        if project is None:
+            # No reconstruction in the archive — maybe it is just images.
+            images_dir = find_images_dir(args.project)
+            if images_dir is None:
+                dump_tree(args.project)
+                raise SystemExit(f"no reconstruction or images found under {args.project}")
+            print(f"no sparse model found; running COLMAP on images in {images_dir}")
+            frame_count = len(list_images(images_dir))
+            project = run_colmap(images_dir, work)
+        else:
+            train_downscale = args.downscale
+        print(f"using COLMAP project: {project}")
 
     out_ply = work / "scene.ply"
-    train_opensplat(args.opensplat, project, args.iterations, out_ply)
+    train_opensplat(args.opensplat, project, args.iterations, out_ply, downscale=train_downscale)
 
     cloud = prune_to_budget(ply_to_cloud(out_ply), max_mb=args.max_mb)
     args.out.mkdir(parents=True, exist_ok=True)
