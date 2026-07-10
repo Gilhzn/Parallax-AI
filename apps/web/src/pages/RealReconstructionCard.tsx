@@ -35,6 +35,7 @@ export default function RealReconstructionCard({ video }: { video: File }) {
     getGithubToken() ? 'checking' : 'none',
   );
   const [busy, setBusy] = useState(false);
+  const [tokenOwner, setTokenOwner] = useState<string | null>(null);
   const [queued, setQueued] = useState<{ name: string; tourUrl: string } | null>(null);
   const [ready, setReady] = useState(false);
   const [elapsedMin, setElapsedMin] = useState(0);
@@ -48,7 +49,12 @@ export default function RealReconstructionCard({ video }: { video: File }) {
     if (!stored) return;
     let cancelled = false;
     verifyGithubToken(stored)
-      .then(() => !cancelled && setStoredState('valid'))
+      .then(({ login }) => {
+        if (!cancelled) {
+          setTokenOwner(login);
+          setStoredState('valid');
+        }
+      })
       .catch(() => {
         setGithubToken('');
         if (!cancelled) {
@@ -87,7 +93,8 @@ export default function RealReconstructionCard({ video }: { video: File }) {
     }
     setBusy(true);
     try {
-      await verifyGithubToken(tok);
+      const { login } = await verifyGithubToken(tok);
+      setTokenOwner(login);
       setGithubToken(tok);
       setStoredState('valid');
       const result = await queueRealReconstruction(video, tok);
@@ -153,7 +160,8 @@ export default function RealReconstructionCard({ video }: { video: File }) {
 
       {storedState === 'valid' ? (
         <p className="hint" style={{ margin: '0 0 10px' }}>
-          🔑 Using your saved token ({describeToken(getGithubToken())}).{' '}
+          🔑 Using your saved token{tokenOwner ? ` of @${tokenOwner}` : ''} (
+          {describeToken(getGithubToken())}) — verified, write access confirmed.{' '}
           <a
             href="#clear"
             onClick={(e) => {

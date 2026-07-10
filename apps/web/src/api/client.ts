@@ -70,43 +70,52 @@ async function githubMessage(resp: Response): Promise<string> {
   }
 }
 
-/** Verify the token can see the repo AND is allowed to write to it. */
-export async function verifyGithubToken(token: string): Promise<void> {
-  let resp: Response;
+function ghHeaders(token: string) {
+  return { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github+json' };
+}
+
+/** Verify the token in two conclusive steps: (1) whose token is it at all,
+ *  (2) can that identity write to the repo. Returns the identity for display. */
+export async function verifyGithubToken(token: string): Promise<{ login: string }> {
+  let who: Response;
   try {
-    resp = await fetch(`https://api.github.com/repos/${REPO}`, {
-      headers: { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github+json' },
+    who = await fetch('https://api.github.com/user', {
+      headers: ghHeaders(token),
       cache: 'no-store',
     });
   } catch {
     throw new Error('Could not reach GitHub — check your connection and try again.');
   }
-  if (resp.status === 401) {
+  if (who.status === 401) {
     throw new Error(
-      `GitHub rejected the token (invalid or expired)${await githubMessage(resp)}. ` +
-        'Make sure you copied the ENTIRE token.',
+      `GitHub does not recognize this token at all${await githubMessage(who)}. This happens ` +
+        'when the token was REGENERATED after you copied it (the old value dies instantly), ' +
+        'revoked, or not copied fully — open the token page and copy the CURRENT value.',
     );
   }
-  if (resp.status === 403 || resp.status === 404) {
+  if (!who.ok) {
+    throw new Error(`GitHub identity check failed (HTTP ${who.status})${await githubMessage(who)}.`);
+  }
+  const login: string = (await who.json())?.login ?? 'unknown';
+
+  const repo = await fetch(`https://api.github.com/repos/${REPO}`, {
+    headers: ghHeaders(token),
+    cache: 'no-store',
+  });
+  if (!repo.ok) {
     throw new Error(
-      `The token has no access to the ${REPO} repository${await githubMessage(resp)}. ` +
-        'Recreate it with the repo selected.',
+      `Token belongs to @${login} but cannot access ${REPO} ` +
+        `(HTTP ${repo.status})${await githubMessage(repo)}. Recreate it with the repo selected.`,
     );
   }
-  if (!resp.ok) {
-    throw new Error(`GitHub token check failed (HTTP ${resp.status})${await githubMessage(resp)}.`);
-  }
-  // A valid token from the WRONG account (or one missing the repo scope)
-  // can read a public repo but not write to it — catch that here, before
-  // the upload, with a precise explanation.
-  const repoInfo = await resp.json();
+  const repoInfo = await repo.json();
   if (repoInfo?.permissions?.push !== true) {
     throw new Error(
-      'This token cannot WRITE to the repository. It probably belongs to a different GitHub ' +
-        'account or is missing the "repo" scope — create the token while logged in as the ' +
-        'repository owner (Gilhzn), using the quick link above.',
+      `Token belongs to @${login}, which has NO WRITE ACCESS to ${REPO}. Create the token ` +
+        'while logged in as the repository owner (Gilhzn), with Contents: Read and write.',
     );
   }
+  return { login };
 }
 
 const TOKEN_KEY = 'spatialscan-github-token';
@@ -177,7 +186,8 @@ export async function queueRealReconstruction(
   });
   if (resp.status === 401) {
     throw new Error(
-      `GitHub token is invalid or expired${await githubMessage(resp)} — paste a new one.`,
+      `GitHub token is invalid or expired${await githubMessage(resp)} — it may have been ` +
+        'regenerated or revoked moments ago. Copy the CURRENT value and paste again.',
     );
   }
   if (resp.status === 403 || resp.status === 404) {
