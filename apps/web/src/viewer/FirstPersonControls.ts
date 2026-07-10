@@ -82,9 +82,11 @@ export class FirstPersonControls {
       if (Math.abs(e.clientX - this.downPos.x) + Math.abs(e.clientY - this.downPos.y) > 10) {
         this.moved = true;
       }
-      this.yaw -= dx * FirstPersonControls.LOOK_SPEED;
+      // "Grab the world": the scene follows the finger (drag right -> look left),
+      // matching the touch convention of maps and panorama viewers.
+      this.yaw += dx * FirstPersonControls.LOOK_SPEED;
       this.pitch = THREE.MathUtils.clamp(
-        this.pitch - dy * FirstPersonControls.LOOK_SPEED,
+        this.pitch + dy * FirstPersonControls.LOOK_SPEED,
         -FirstPersonControls.MAX_PITCH,
         FirstPersonControls.MAX_PITCH,
       );

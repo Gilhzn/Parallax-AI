@@ -18,7 +18,8 @@ const QUALITY_OPTIONS: { value: QualityPreset; label: string; hint: string }[] =
 
 export default function UploadPage() {
   const navigate = useNavigate();
-  const inputRef = useRef<HTMLInputElement>(null);
+  const galleryRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState<VideoMetadata | null>(null);
   const [quality, setQuality] = useState<QualityPreset>('balanced');
@@ -77,24 +78,39 @@ export default function UploadPage() {
         </div>
       )}
 
-      <div
-        className="drop"
-        role="button"
-        tabIndex={0}
-        onClick={() => inputRef.current?.click()}
-        onKeyDown={(e) => e.key === 'Enter' && inputRef.current?.click()}
-      >
+      <div className="drop">
         <span className="big">🎥</span>
-        {file ? <strong>{file.name}</strong> : <strong>Record or choose a video</strong>}
+        {file ? <strong>{file.name}</strong> : <strong>Film live or upload a video</strong>}
         <p className="hint">
           Up to {MAX_VIDEO_SECONDS} seconds. Walk slowly, keep the camera moving sideways, and
           overlap what you film.
         </p>
+        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 14 }}>
+          <button className="btn" style={{ width: 'auto' }} onClick={() => cameraRef.current?.click()}>
+            📹 Film now
+          </button>
+          <button
+            className="btn ghost"
+            style={{ width: 'auto' }}
+            onClick={() => galleryRef.current?.click()}
+          >
+            📁 Upload video
+          </button>
+        </div>
+        {/* Camera capture (opens the camera app on phones) */}
         <input
-          ref={inputRef}
+          ref={cameraRef}
           type="file"
-          accept="video/mp4,video/quicktime,video/webm"
+          accept="video/*"
           capture="environment"
+          hidden
+          onChange={(e) => onPick(e.target.files?.[0])}
+        />
+        {/* Gallery / file picker (no capture attribute -> existing videos) */}
+        <input
+          ref={galleryRef}
+          type="file"
+          accept="video/mp4,video/quicktime,video/webm,video/*"
           hidden
           onChange={(e) => onPick(e.target.files?.[0])}
         />
