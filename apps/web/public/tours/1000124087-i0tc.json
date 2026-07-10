@@ -1,0 +1,21 @@
+{
+  "camera": {
+    "pos": [
+      -1.62,
+      -0.351,
+      10.299
+    ],
+    "look": [
+      -1.62,
+      -0.201,
+      9.547
+    ]
+  },
+  "name": "1000124087-i0tc",
+  "splat_count": 165,
+  "size_bytes": 5280,
+  "iterations": 800,
+  "frame_count": 48,
+  "engine": "opensplat-cpu",
+  "elapsed_sec": 31.1
+}
