@@ -61,27 +61,52 @@ export function describeToken(token: string): string {
   return `${t.slice(0, 10)}…${t.slice(-4)} · ${t.length} chars`;
 }
 
-/** Verify the token can actually see the repo before uploading anything. */
+async function githubMessage(resp: Response): Promise<string> {
+  try {
+    const body = await resp.json();
+    return body?.message ? ` — GitHub says: "${body.message}"` : '';
+  } catch {
+    return '';
+  }
+}
+
+/** Verify the token can see the repo AND is allowed to write to it. */
 export async function verifyGithubToken(token: string): Promise<void> {
   let resp: Response;
   try {
     resp = await fetch(`https://api.github.com/repos/${REPO}`, {
       headers: { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github+json' },
+      cache: 'no-store',
     });
   } catch {
     throw new Error('Could not reach GitHub — check your connection and try again.');
   }
   if (resp.status === 401) {
     throw new Error(
-      'GitHub rejected the token (invalid or expired). Make sure you copied the ENTIRE token — it starts with github_pat_ or ghp_.',
+      `GitHub rejected the token (invalid or expired)${await githubMessage(resp)}. ` +
+        'Make sure you copied the ENTIRE token.',
     );
   }
   if (resp.status === 403 || resp.status === 404) {
     throw new Error(
-      'The token works but has no access to the Parallax-AI repository. Recreate it with the repo selected (or use the quick classic-token link).',
+      `The token has no access to the ${REPO} repository${await githubMessage(resp)}. ` +
+        'Recreate it with the repo selected.',
     );
   }
-  if (!resp.ok) throw new Error(`GitHub token check failed (HTTP ${resp.status}).`);
+  if (!resp.ok) {
+    throw new Error(`GitHub token check failed (HTTP ${resp.status})${await githubMessage(resp)}.`);
+  }
+  // A valid token from the WRONG account (or one missing the repo scope)
+  // can read a public repo but not write to it — catch that here, before
+  // the upload, with a precise explanation.
+  const repoInfo = await resp.json();
+  if (repoInfo?.permissions?.push !== true) {
+    throw new Error(
+      'This token cannot WRITE to the repository. It probably belongs to a different GitHub ' +
+        'account or is missing the "repo" scope — create the token while logged in as the ' +
+        'repository owner (Gilhzn), using the quick link above.',
+    );
+  }
 }
 
 const TOKEN_KEY = 'spatialscan-github-token';
@@ -150,14 +175,18 @@ export async function queueRealReconstruction(
       content: await fileToBase64(video),
     }),
   });
-  if (resp.status === 401) throw new Error('GitHub token is invalid or expired — paste a new one.');
-  if (resp.status === 403 || resp.status === 404) {
+  if (resp.status === 401) {
     throw new Error(
-      'Token is not allowed to write to the repository. Create a fine-grained token with ' +
-        'access to Parallax-AI and "Contents: Read and write".',
+      `GitHub token is invalid or expired${await githubMessage(resp)} — paste a new one.`,
     );
   }
-  if (!resp.ok) throw new Error(`GitHub upload failed (HTTP ${resp.status}).`);
+  if (resp.status === 403 || resp.status === 404) {
+    throw new Error(
+      `Token is not allowed to write to the repository${await githubMessage(resp)}. ` +
+        'Create the token while logged in as the repository owner (Gilhzn).',
+    );
+  }
+  if (!resp.ok) throw new Error(`GitHub upload failed (HTTP ${resp.status})${await githubMessage(resp)}.`);
   return { name, tourUrl: `/tour/${name}` };
 }
 
