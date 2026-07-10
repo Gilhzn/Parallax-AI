@@ -1,7 +1,13 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { createJob, type QualityPreset, type VideoMetadata } from '../api/client';
+import {
+  createJob,
+  IS_DEMO_BUILD,
+  REAL_RECONSTRUCTION_UPLOAD_URL,
+  type QualityPreset,
+  type VideoMetadata,
+} from '../api/client';
 import { checkDuration, extractVideoMetadata, MAX_VIDEO_SECONDS } from '../lib/videoMetadata';
 
 const QUALITY_OPTIONS: { value: QualityPreset; label: string; hint: string }[] = [
@@ -60,6 +66,25 @@ export default function UploadPage() {
       <p className="tagline">
         Film a room, get a walkable photorealistic 3D tour. No special hardware.
       </p>
+
+      {IS_DEMO_BUILD && (
+        <div className="card" style={{ borderColor: 'var(--accent-2)' }}>
+          <strong>Demo site — uploads here are simulated.</strong>
+          <p className="hint" style={{ margin: '6px 0 10px' }}>
+            This deployment has no GPU attached, so the pipeline below is a simulation. To turn
+            YOUR video into a real 3D model (free, takes 1–3 hours), upload it to the
+            reconstruction queue — the tour of your actual footage will appear on this site.
+          </p>
+          <a
+            className="btn ghost"
+            href={REAL_RECONSTRUCTION_UPLOAD_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Upload for REAL reconstruction →
+          </a>
+        </div>
+      )}
 
       <div
         className="drop"

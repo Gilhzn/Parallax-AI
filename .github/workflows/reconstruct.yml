@@ -65,12 +65,15 @@ jobs:
       - name: Build OpenSplat (CPU, first run only)
         if: steps.cache-opensplat.outputs.cache-hit != 'true'
         run: |
+          set -euo pipefail
           curl -sL -o libtorch.zip "https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.1%2Bcpu.zip"
           unzip -q libtorch.zip
           git clone --depth 1 https://github.com/pierotofy/OpenSplat
           cd OpenSplat && mkdir -p build && cd build
-          cmake -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/libtorch" -DCMAKE_BUILD_TYPE=Release .. > cmake.log || (tail -50 cmake.log && exit 1)
-          make -j"$(nproc)" 2>&1 | tail -5
+          cmake -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/libtorch" -DCMAKE_BUILD_TYPE=Release .. > cmake.log 2>&1 || (tail -60 cmake.log && exit 1)
+          # -j2: template-heavy libtorch sources can OOM the runner at higher parallelism
+          make -j2 2>&1 | tail -25
+          test -x ./opensplat && echo "opensplat binary built OK"
 
       - name: Worker package
         run: python3 -m pip install -q -e services/worker gdown
@@ -124,7 +127,8 @@ jobs:
       - name: Reconstruct (COLMAP -> OpenSplat, CPU)
         run: |
           export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/libtorch/lib:$LD_LIBRARY_PATH"
-          OpenSplat/build/opensplat --help | head -40 || true
+          test -x OpenSplat/build/opensplat || { echo "::error::opensplat binary missing — build step failed"; exit 1; }
+          OpenSplat/build/opensplat --help | head -5 || true
           if [ "${{ steps.fetch.outputs.mode }}" = "project" ]; then
             SRC_ARG="--project ${{ steps.fetch.outputs.path }}"
           else

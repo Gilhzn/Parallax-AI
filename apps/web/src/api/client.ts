@@ -33,6 +33,12 @@ export const DEMO_JOB_ID = 'demo';
 // Static deployments (GitHub Pages) build with VITE_DEMO_MODE=1: no backend
 // exists at all, so uploads skip the network entirely.
 const FORCED_DEMO = import.meta.env.VITE_DEMO_MODE === '1';
+export const IS_DEMO_BUILD = FORCED_DEMO;
+
+// Where to upload a video for a REAL (free, CPU) reconstruction — the
+// GitHub Actions workflow picks it up and publishes the tour to this site.
+export const REAL_RECONSTRUCTION_UPLOAD_URL =
+  'https://github.com/Gilhzn/Parallax-AI/upload/claude/spatialscan-platform-arch-agtxzq/captures';
 const DEMO_START_KEY = 'spatialscan-demo-start';
 const DEMO_STAGES: { stage: string; until: number }[] = [
   { stage: 'upload', until: 0.1 },

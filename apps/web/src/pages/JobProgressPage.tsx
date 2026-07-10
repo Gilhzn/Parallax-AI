@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 
-import { getJob, isDemoJob, type JobStatus } from '../api/client';
+import {
+  getJob,
+  isDemoJob,
+  REAL_RECONSTRUCTION_UPLOAD_URL,
+  type JobStatus,
+} from '../api/client';
 
 const STEPS: { key: string; label: string; detail: string }[] = [
   { key: 'upload', label: 'Uploaded', detail: 'Video stored securely' },
@@ -62,11 +67,19 @@ export default function JobProgressPage() {
       {jobId && isDemoJob(jobId) && (
         <div className="card" style={{ borderColor: 'var(--accent-2)' }}>
           <strong>Demo mode</strong>
-          <p className="hint" style={{ margin: '6px 0 0' }}>
-            No processing backend is connected on this deployment, so the pipeline is simulated
-            and your tour will show the built-in sample scene. Run the full stack locally
-            (<code>make demo</code>) to process real videos.
+          <p className="hint" style={{ margin: '6px 0 10px' }}>
+            No processing backend is connected on this deployment, so this pipeline is simulated
+            and the tour will show the built-in sample scene — <strong>not your footage</strong>.
+            For a real reconstruction of your video (free), use the reconstruction queue:
           </p>
+          <a
+            className="btn ghost"
+            href={REAL_RECONSTRUCTION_UPLOAD_URL}
+            target="_blank"
+            rel="noreferrer"
+          >
+            Upload for REAL reconstruction →
+          </a>
         </div>
       )}
 
