@@ -22,14 +22,19 @@ export default function UploadPage() {
   const cameraRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState<VideoMetadata | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
   const [quality, setQuality] = useState<QualityPreset>('balanced');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   async function onPick(picked: File | undefined) {
     setError(null);
+    setWarning(null);
     setMeta(null);
     if (!picked) return;
+    // Accept the file IMMEDIATELY — the action buttons must never depend on
+    // whether this browser can decode a preview of the video.
+    setFile(picked);
     try {
       const extracted = await extractVideoMetadata(picked);
       const check = checkDuration(extracted.duration_sec);
@@ -38,19 +43,27 @@ export default function UploadPage() {
         setFile(null);
         return;
       }
-      setFile(picked);
       setMeta(extracted);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+    } catch {
+      setWarning(
+        'Could not read a preview of this video in the browser — you can still send it for real reconstruction.',
+      );
     }
   }
 
   async function onUpload() {
-    if (!file || !meta) return;
+    if (!file) return;
     setBusy(true);
     setError(null);
     try {
-      const { job_id } = await createJob(file, meta, quality);
+      const effectiveMeta: VideoMetadata = meta ?? {
+        duration_sec: 30,
+        width: null,
+        height: null,
+        fps: null,
+        size_bytes: file.size,
+      };
+      const { job_id } = await createJob(file, effectiveMeta, quality);
       navigate(`/jobs/${job_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -104,7 +117,10 @@ export default function UploadPage() {
           accept="video/*"
           capture="environment"
           hidden
-          onChange={(e) => onPick(e.target.files?.[0])}
+          onChange={(e) => {
+            onPick(e.target.files?.[0]);
+            e.target.value = ''; // allow re-picking the same file
+          }}
         />
         {/* Gallery / file picker (no capture attribute -> existing videos) */}
         <input
@@ -112,7 +128,10 @@ export default function UploadPage() {
           type="file"
           accept="video/mp4,video/quicktime,video/webm,video/*"
           hidden
-          onChange={(e) => onPick(e.target.files?.[0])}
+          onChange={(e) => {
+            onPick(e.target.files?.[0]);
+            e.target.value = ''; // allow re-picking the same file
+          }}
         />
       </div>
 
@@ -163,8 +182,13 @@ export default function UploadPage() {
         </div>
       )}
 
-      {IS_DEMO_BUILD && file && meta && <RealReconstructionCard video={file} />}
+      {IS_DEMO_BUILD && file && <RealReconstructionCard video={file} />}
 
+      {warning && (
+        <p className="hint" style={{ color: 'var(--accent-2)', margin: '12px 0 0' }}>
+          {warning}
+        </p>
+      )}
       {error && <p className="error">{error}</p>}
 
       <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>

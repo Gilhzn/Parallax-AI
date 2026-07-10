@@ -51,7 +51,21 @@ export function extractVideoMetadata(file: File): Promise<VideoMetadata> {
     video.muted = true;
     video.playsInline = true;
 
+    let settled = false;
+    // Some codecs (e.g. HEVC on browsers without support) leave the element
+    // stuck loading with neither loadedmetadata nor error — never hang the UI.
+    const guard = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        URL.revokeObjectURL(url);
+        reject(new Error('Could not read this video in the browser.'));
+      }
+    }, 6000);
+
     const finish = (fps: number | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(guard);
       const meta: VideoMetadata = {
         duration_sec: video.duration,
         width: video.videoWidth || null,
@@ -65,6 +79,9 @@ export function extractVideoMetadata(file: File): Promise<VideoMetadata> {
     };
 
     video.onerror = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(guard);
       URL.revokeObjectURL(url);
       reject(new Error('Could not read this video file.'));
     };
