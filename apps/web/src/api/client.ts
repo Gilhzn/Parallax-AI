@@ -53,6 +53,14 @@ export function looksLikeGithubToken(token: string): boolean {
   return /^(github_pat_[A-Za-z0-9_]{30,}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,})$/.test(t);
 }
 
+/** Redacted description of the token that will actually be sent — surfaces
+ *  paste accidents (stale value, doubled paste) without exposing the secret. */
+export function describeToken(token: string): string {
+  const t = token.trim();
+  if (!t) return 'empty';
+  return `${t.slice(0, 10)}…${t.slice(-4)} · ${t.length} chars`;
+}
+
 /** Verify the token can actually see the repo before uploading anything. */
 export async function verifyGithubToken(token: string): Promise<void> {
   let resp: Response;
