@@ -8,6 +8,8 @@ import {
   looksLikeGithubToken,
   MAX_REAL_UPLOAD_MB,
   queueRealReconstruction,
+  REAL_RECONSTRUCTION_UPLOAD_URL,
+  sanitizeTourName,
   setGithubToken,
   TOKEN_CREATE_URL,
   TOKEN_QUICK_URL,
@@ -155,7 +157,26 @@ export default function RealReconstructionCard({ video }: { video: File }) {
       <strong>Send to REAL reconstruction</strong>
       <p className="hint" style={{ margin: '6px 0 10px' }}>
         Builds an actual 3D model from your footage (free, 15–60 min) and publishes it to this
-        site. Up to {MAX_REAL_UPLOAD_MB}MB.
+        site.
+      </p>
+
+      {/* Primary path: GitHub's own uploader — no token, robust for large
+          files. Works because the user is signed in to GitHub in this browser. */}
+      <a className="btn" href={REAL_RECONSTRUCTION_UPLOAD_URL} target="_blank" rel="noreferrer">
+        ⬆️ Upload via GitHub — no token needed
+      </a>
+      <p className="hint" style={{ margin: '8px 0 4px' }}>
+        Opens GitHub (you are already signed in there): drag or select your video, press{' '}
+        <em>Commit changes</em>, done. Your tour will appear at{' '}
+        <code>/tour/{sanitizeTourName(video.name)}</code> in ~15–60 min (
+        <a href={ACTIONS_URL} target="_blank" rel="noreferrer">
+          watch progress
+        </a>
+        ).
+      </p>
+
+      <p className="hint" style={{ margin: '14px 0 10px', opacity: 0.7 }}>
+        — or upload right here with a token (up to {MAX_REAL_UPLOAD_MB}MB) —
       </p>
 
       {storedState === 'valid' ? (
@@ -223,11 +244,11 @@ export default function RealReconstructionCard({ video }: { video: File }) {
       {error && <p className="error" style={{ margin: '0 0 10px' }}>{error}</p>}
 
       <button
-        className="btn"
+        className="btn ghost"
         disabled={busy || (storedState !== 'valid' && !token.trim())}
         onClick={send}
       >
-        {busy ? 'Checking & uploading…' : 'Reconstruct my video for real'}
+        {busy ? 'Checking & uploading…' : 'Reconstruct via in-app upload'}
       </button>
     </div>
   );

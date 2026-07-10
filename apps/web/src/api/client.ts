@@ -156,6 +156,36 @@ export const MAX_REAL_UPLOAD_MB = 70; // GitHub contents API caps ~100MB after b
  * fine-grained token, stored only in this browser), which triggers the
  * reconstruction workflow. Returns the future tour name.
  */
+/** Tiny write probe OUTSIDE captures/ (so it never triggers the workflow):
+ *  proves the token can commit at all, isolating auth failures from
+ *  large-upload transport failures. */
+async function probeWrite(token: string): Promise<void> {
+  const path = '.probes/upload-check.txt';
+  const url = `https://api.github.com/repos/${REPO}/contents/${path}`;
+  let sha: string | undefined;
+  const existing = await fetch(`${url}?ref=${REPO_BRANCH}`, {
+    headers: ghHeaders(token),
+    cache: 'no-store',
+  });
+  if (existing.ok) sha = (await existing.json())?.sha;
+  const resp = await fetch(url, {
+    method: 'PUT',
+    headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      message: 'Upload connectivity probe',
+      branch: REPO_BRANCH,
+      content: btoa(`probe ${new Date().toISOString()}`),
+      ...(sha ? { sha } : {}),
+    }),
+  });
+  if (!resp.ok) {
+    throw new Error(
+      `Write test failed (HTTP ${resp.status})${await githubMessage(resp)} — ` +
+        'the token cannot commit to the repository.',
+    );
+  }
+}
+
 export async function queueRealReconstruction(
   video: File,
   token: string,
@@ -171,32 +201,28 @@ export async function queueRealReconstruction(
   const name = `${sanitizeTourName(video.name)}-${Date.now().toString(36).slice(-4)}`;
   const path = `captures/${name}.${safeExt}`;
 
+  // Prove small writes work before attempting the multi-MB upload.
+  await probeWrite(token);
+
   const resp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
     method: 'PUT',
-    headers: {
-      Authorization: `Bearer ${token}`,
-      Accept: 'application/vnd.github+json',
-      'Content-Type': 'application/json',
-    },
+    headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
     body: JSON.stringify({
       message: `Queue real reconstruction: ${name}`,
       branch: REPO_BRANCH,
       content: await fileToBase64(video),
     }),
   });
-  if (resp.status === 401) {
+  if (!resp.ok) {
+    // The tiny probe just committed successfully with this exact token, so a
+    // failure HERE is about the large request itself (mobile networks and
+    // proxies mangle multi-MB cross-origin PUTs), not about credentials.
     throw new Error(
-      `GitHub token is invalid or expired${await githubMessage(resp)} — it may have been ` +
-        'regenerated or revoked moments ago. Copy the CURRENT value and paste again.',
+      `Auth is fine (a small test commit just succeeded), but the ${(video.size / 1024 / 1024).toFixed(0)}MB ` +
+        `video upload failed (HTTP ${resp.status})${await githubMessage(resp)}. ` +
+        'Use the "Upload via GitHub" button instead — it handles large files reliably.',
     );
   }
-  if (resp.status === 403 || resp.status === 404) {
-    throw new Error(
-      `Token is not allowed to write to the repository${await githubMessage(resp)}. ` +
-        'Create the token while logged in as the repository owner (Gilhzn).',
-    );
-  }
-  if (!resp.ok) throw new Error(`GitHub upload failed (HTTP ${resp.status})${await githubMessage(resp)}.`);
   return { name, tourUrl: `/tour/${name}` };
 }
 
