@@ -37,8 +37,102 @@ export const IS_DEMO_BUILD = FORCED_DEMO;
 
 // Where to upload a video for a REAL (free, CPU) reconstruction — the
 // GitHub Actions workflow picks it up and publishes the tour to this site.
-export const REAL_RECONSTRUCTION_UPLOAD_URL =
-  'https://github.com/Gilhzn/Parallax-AI/upload/claude/spatialscan-platform-arch-agtxzq/captures';
+export const REPO = 'Gilhzn/Parallax-AI';
+export const REPO_BRANCH = 'claude/spatialscan-platform-arch-agtxzq';
+export const REAL_RECONSTRUCTION_UPLOAD_URL = `https://github.com/${REPO}/upload/${REPO_BRANCH}/captures`;
+export const ACTIONS_URL = `https://github.com/${REPO}/actions/workflows/reconstruct.yml`;
+// Fine-grained token: Only select repositories -> Parallax-AI; Contents: Read and write.
+export const TOKEN_CREATE_URL = 'https://github.com/settings/personal-access-tokens/new';
+
+const TOKEN_KEY = 'spatialscan-github-token';
+
+export function getGithubToken(): string {
+  return localStorage.getItem(TOKEN_KEY) ?? '';
+}
+
+export function setGithubToken(token: string): void {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function sanitizeTourName(filename: string): string {
+  const stem = filename.replace(/\.[^.]+$/, '');
+  const clean = stem
+    .toLowerCase()
+    .replace(/[^a-z0-9-_]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, 40);
+  return clean || 'tour';
+}
+
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Could not read the video file.'));
+    reader.onload = () => resolve(String(reader.result).split(',', 2)[1] ?? '');
+    reader.readAsDataURL(file);
+  });
+}
+
+export const MAX_REAL_UPLOAD_MB = 70; // GitHub contents API caps ~100MB after base64
+
+/**
+ * Queue a REAL reconstruction from inside the app: commits the video into
+ * captures/ on the repo via the GitHub contents API (using the user's own
+ * fine-grained token, stored only in this browser), which triggers the
+ * reconstruction workflow. Returns the future tour name.
+ */
+export async function queueRealReconstruction(
+  video: File,
+  token: string,
+): Promise<{ name: string; tourUrl: string }> {
+  if (video.size > MAX_REAL_UPLOAD_MB * 1024 * 1024) {
+    throw new Error(
+      `Video is ${(video.size / 1024 / 1024).toFixed(0)}MB — the in-app limit is ` +
+        `${MAX_REAL_UPLOAD_MB}MB. Film a shorter clip or lower the resolution.`,
+    );
+  }
+  const ext = (video.name.split('.').pop() || 'mp4').toLowerCase();
+  const safeExt = ['mp4', 'mov', 'webm'].includes(ext) ? ext : 'mp4';
+  const name = `${sanitizeTourName(video.name)}-${Date.now().toString(36).slice(-4)}`;
+  const path = `captures/${name}.${safeExt}`;
+
+  const resp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: `Queue real reconstruction: ${name}`,
+      branch: REPO_BRANCH,
+      content: await fileToBase64(video),
+    }),
+  });
+  if (resp.status === 401) throw new Error('GitHub token is invalid or expired — paste a new one.');
+  if (resp.status === 403 || resp.status === 404) {
+    throw new Error(
+      'Token is not allowed to write to the repository. Create a fine-grained token with ' +
+        'access to Parallax-AI and "Contents: Read and write".',
+    );
+  }
+  if (!resp.ok) throw new Error(`GitHub upload failed (HTTP ${resp.status}).`);
+  return { name, tourUrl: `/tour/${name}` };
+}
+
+/** True once the reconstruction workflow has published this tour. */
+export async function tourReady(name: string): Promise<boolean> {
+  try {
+    const resp = await fetch(
+      `${import.meta.env.BASE_URL}tours/${encodeURIComponent(name)}.json?t=${Date.now()}`,
+      { cache: 'no-store' },
+    );
+    return resp.ok;
+  } catch {
+    return false;
+  }
+}
 const DEMO_START_KEY = 'spatialscan-demo-start';
 const DEMO_STAGES: { stage: string; until: number }[] = [
   { stage: 'upload', until: 0.1 },

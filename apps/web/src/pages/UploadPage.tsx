@@ -4,10 +4,10 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   createJob,
   IS_DEMO_BUILD,
-  REAL_RECONSTRUCTION_UPLOAD_URL,
   type QualityPreset,
   type VideoMetadata,
 } from '../api/client';
+import RealReconstructionCard from './RealReconstructionCard';
 import { checkDuration, extractVideoMetadata, MAX_VIDEO_SECONDS } from '../lib/videoMetadata';
 
 const QUALITY_OPTIONS: { value: QualityPreset; label: string; hint: string }[] = [
@@ -67,22 +67,13 @@ export default function UploadPage() {
         Film a room, get a walkable photorealistic 3D tour. No special hardware.
       </p>
 
-      {IS_DEMO_BUILD && (
+      {IS_DEMO_BUILD && !file && (
         <div className="card" style={{ borderColor: 'var(--accent-2)' }}>
-          <strong>Demo site — uploads here are simulated.</strong>
-          <p className="hint" style={{ margin: '6px 0 10px' }}>
-            This deployment has no GPU attached, so the pipeline below is a simulation. To turn
-            YOUR video into a real 3D model (free, takes 1–3 hours), upload it to the
-            reconstruction queue — the tour of your actual footage will appear on this site.
+          <strong>Film or pick a video below</strong>
+          <p className="hint" style={{ margin: '6px 0 0' }}>
+            Then choose <em>REAL reconstruction</em> to turn your actual footage into a walkable
+            3D model (free, 15–60 min) — or run the instant demo simulation.
           </p>
-          <a
-            className="btn ghost"
-            href={REAL_RECONSTRUCTION_UPLOAD_URL}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Upload for REAL reconstruction →
-          </a>
         </div>
       )}
 
@@ -156,14 +147,23 @@ export default function UploadPage() {
         </div>
       )}
 
+      {IS_DEMO_BUILD && file && meta && <RealReconstructionCard video={file} />}
+
       {error && <p className="error">{error}</p>}
 
       <div style={{ marginTop: 16, display: 'grid', gap: 10 }}>
-        <button className="btn" disabled={!file || busy} onClick={onUpload}>
-          {busy ? 'Uploading…' : 'Create 3D tour'}
+        <button
+          className={IS_DEMO_BUILD ? 'btn ghost' : 'btn'}
+          disabled={!file || busy}
+          onClick={onUpload}
+        >
+          {busy ? 'Uploading…' : IS_DEMO_BUILD ? 'Run demo simulation instead' : 'Create 3D tour'}
         </button>
         <Link className="btn ghost" to="/tour/sample">
           Explore a demo tour
+        </Link>
+        <Link className="btn ghost" to="/tour/real-demo">
+          See a real reconstruction
         </Link>
       </div>
     </div>

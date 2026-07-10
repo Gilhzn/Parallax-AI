@@ -46,6 +46,8 @@ jobs:
     timeout-minutes: 350
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2 # to diff the triggering commit for the uploaded video
 
       - name: System dependencies
         run: |
@@ -88,8 +90,12 @@ jobs:
             echo "downscale=${{ github.event.inputs.downscale }}" >> "$GITHUB_OUTPUT"
             echo "max_frames=${{ github.event.inputs.max_frames }}" >> "$GITHUB_OUTPUT"
           else
-            # push into captures/: newest video wins; request.json can override params
-            VIDEO=$(ls -t captures/*.mp4 captures/*.mov captures/*.webm 2>/dev/null | head -1 || true)
+            # push into captures/: the video added/changed by THIS push wins
+            # (checkout mtimes are unreliable); fall back to newest listing.
+            VIDEO=$(git diff --name-only HEAD~1 HEAD -- captures/ 2>/dev/null | grep -iE '\.(mp4|mov|webm)$' | head -1 || true)
+            if [ -z "$VIDEO" ]; then
+              VIDEO=$(ls -t captures/*.mp4 captures/*.mov captures/*.webm 2>/dev/null | head -1 || true)
+            fi
             if [ -n "$VIDEO" ]; then
               echo "source=file:$VIDEO" >> "$GITHUB_OUTPUT"
               BASE=$(basename "$VIDEO"); echo "name=${BASE%.*}" >> "$GITHUB_OUTPUT"
