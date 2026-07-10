@@ -1,0 +1,9 @@
+{
+  "name": "real-demo",
+  "splat_count": 5879,
+  "size_bytes": 188128,
+  "iterations": 800,
+  "frame_count": 16,
+  "engine": "opensplat-cpu",
+  "elapsed_sec": 748.6
+}
