@@ -204,15 +204,27 @@ export async function queueRealReconstruction(
   // Prove small writes work before attempting the multi-MB upload.
   await probeWrite(token);
 
-  const resp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
-    method: 'PUT',
-    headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      message: `Queue real reconstruction: ${name}`,
-      branch: REPO_BRANCH,
-      content: await fileToBase64(video),
-    }),
-  });
+  const sizeMb = (video.size / 1024 / 1024).toFixed(0);
+  let resp: Response;
+  try {
+    resp = await fetch(`https://api.github.com/repos/${REPO}/contents/${path}`, {
+      method: 'PUT',
+      headers: { ...ghHeaders(token), 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        message: `Queue real reconstruction: ${name}`,
+        branch: REPO_BRANCH,
+        content: await fileToBase64(video),
+      }),
+    });
+  } catch {
+    // Auth is proven fine (the probe just committed); the network dropped
+    // the large request itself — common on mobile connections.
+    throw new Error(
+      `Your connection dropped the ${sizeMb}MB upload mid-transfer (small requests work — ` +
+        'the token is fine). Tap the blue "Upload via GitHub" button above: it uploads in ' +
+        'chunks and handles large videos reliably.',
+    );
+  }
   if (!resp.ok) {
     // The tiny probe just committed successfully with this exact token, so a
     // failure HERE is about the large request itself (mobile networks and
