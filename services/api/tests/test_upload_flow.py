@@ -2,7 +2,7 @@ import sys
 import time
 from pathlib import Path
 
-from conftest import TINY_MP4, upload_video
+from api_test_helpers import TINY_MP4, upload_video
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "worker"))
 from spatialscan_worker.splat_format import read_splat  # noqa: E402

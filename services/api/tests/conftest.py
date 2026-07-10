@@ -17,11 +17,6 @@ from spatialscan_api.jobs.trigger import InlineTrigger  # noqa: E402
 from spatialscan_api.main import create_app  # noqa: E402
 from spatialscan_api.storage.local import LocalDiskStorage  # noqa: E402
 
-TINY_MP4 = (
-    b"\x00\x00\x00\x18ftypmp42\x00\x00\x00\x00mp42isom"
-    b"\x00\x00\x00\x08free"
-)
-
 
 @pytest.fixture
 def redis_client():
@@ -70,14 +65,3 @@ def noop_client(settings, redis_client, storage):
     return TestClient(app)
 
 
-def upload_video(client, duration_sec=12.0, data=TINY_MP4, content_type="video/mp4"):
-    return client.post(
-        "/api/jobs",
-        files={"video": ("clip.mp4", data, content_type)},
-        data={
-            "metadata": (
-                f'{{"duration_sec": {duration_sec}, "width": 1280, '
-                f'"height": 720, "fps": 30, "size_bytes": {len(data)}}}'
-            )
-        },
-    )

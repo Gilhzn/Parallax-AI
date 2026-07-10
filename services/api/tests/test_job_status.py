@@ -32,7 +32,7 @@ def test_store_stage_transitions(redis_client):
 
 
 def test_error_surfaces_in_api(noop_client, redis_client):
-    from conftest import upload_video
+    from api_test_helpers import upload_video
 
     job_id = upload_video(noop_client).json()["job_id"]
     JobStore(redis_client).update(job_id, status="error", error="boom")
