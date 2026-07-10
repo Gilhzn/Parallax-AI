@@ -1,4 +1,16 @@
 {
+  "camera": {
+    "pos": [
+      -0.57,
+      0.04,
+      1.33
+    ],
+    "look": [
+      -0.57,
+      0.17,
+      0.66
+    ]
+  },
   "name": "real-demo",
   "splat_count": 5879,
   "size_bytes": 188128,

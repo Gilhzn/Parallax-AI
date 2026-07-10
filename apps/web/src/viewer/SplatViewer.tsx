@@ -6,6 +6,9 @@ import { FirstPersonControls } from './FirstPersonControls';
 interface Props {
   splatUrl: string;
   onError?: (message: string) => void;
+  /** Initial framing (e.g. from a reconstruction manifest — real scenes live
+   *  in an arbitrary COLMAP coordinate frame). URL params still win. */
+  camera?: { pos?: number[]; look?: number[] };
 }
 
 /**
@@ -14,7 +17,7 @@ interface Props {
  * for 60 FPS on phones, no COOP/COEP requirement (sharedMemoryForWorkers off),
  * and our first-person touch controls instead of orbit controls.
  */
-export default function SplatViewer({ splatUrl, onError }: Props) {
+export default function SplatViewer({ splatUrl, onError, camera }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
 
@@ -29,10 +32,15 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
     // Dev/QA overrides: /tour/xyz?pos=0,1.5,2.2&look=0,1,0&nocontrols=1
     const params = new URLSearchParams(window.location.search);
     const vec = (name: string, fallback: [number, number, number]) => {
-      const raw = params.get(name)?.split(',').map(Number);
-      return raw && raw.length === 3 && raw.every(Number.isFinite)
-        ? (raw as [number, number, number])
-        : fallback;
+      const fromUrl = params.get(name)?.split(',').map(Number);
+      if (fromUrl && fromUrl.length === 3 && fromUrl.every(Number.isFinite)) {
+        return fromUrl as [number, number, number];
+      }
+      const fromManifest = camera?.[name === 'pos' ? 'pos' : 'look'];
+      if (fromManifest && fromManifest.length === 3 && fromManifest.every(Number.isFinite)) {
+        return fromManifest as [number, number, number];
+      }
+      return fallback;
     };
 
     const viewer = new GaussianSplats3D.Viewer({
@@ -135,6 +143,7 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
         /* viewer may already be gone */
       });
     };
+    // `camera` is intentionally omitted from deps: it only sets initial framing.
   }, [splatUrl, onError]);
 
   return (

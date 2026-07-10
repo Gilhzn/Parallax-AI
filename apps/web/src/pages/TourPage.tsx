@@ -7,6 +7,7 @@ import SplatViewer from '../viewer/SplatViewer';
 export default function TourPage() {
   const { tourId } = useParams<{ tourId: string }>();
   const [splatUrl, setSplatUrl] = useState<string | null>(null);
+  const [camera, setCamera] = useState<{ pos?: number[]; look?: number[] } | undefined>();
   const [error, setError] = useState<string | null>(null);
   const [shared, setShared] = useState(false);
 
@@ -18,7 +19,11 @@ export default function TourPage() {
       return;
     }
     getTour(tourId)
-      .then((tour) => setSplatUrl(tour.splat_url))
+      .then((tour) => {
+        const cam = tour.manifest?.camera as { pos?: number[]; look?: number[] } | undefined;
+        setCamera(cam);
+        setSplatUrl(tour.splat_url);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, [tourId]);
 
@@ -52,7 +57,7 @@ export default function TourPage() {
 
   return (
     <>
-      {splatUrl && <SplatViewer splatUrl={splatUrl} onError={setError} />}
+      {splatUrl && <SplatViewer splatUrl={splatUrl} onError={setError} camera={camera} />}
       <div className="viewer-hud">
         <Link className="chip" to="/">
           ← SpatialScan

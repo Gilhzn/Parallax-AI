@@ -228,7 +228,24 @@ def main() -> None:
     splat_path = args.out / f"{name}.splat"
     splat_path.write_bytes(write_splat(cloud))
 
+    # Reconstructions live in COLMAP's arbitrary coordinate frame, so compute
+    # a sensible initial camera from the actual splat distribution.
+    import numpy as np
+
+    solid = cloud.positions[cloud.colors[:, 3].astype(float) > 100]
+    if len(solid) < 10:
+        solid = cloud.positions
+    center = np.median(solid, axis=0)
+    spread = float(np.percentile(np.linalg.norm(solid - center, axis=1), 80)) or 1.0
+    direction = np.array([0.0, -0.2, 1.0])
+    direction /= np.linalg.norm(direction)
+    cam_pos = center + direction * spread * 2.2
+
     manifest = {
+        "camera": {
+            "pos": [round(float(v), 3) for v in cam_pos],
+            "look": [round(float(v), 3) for v in center],
+        },
         "name": name,
         "splat_count": len(cloud),
         "size_bytes": splat_path.stat().st_size,

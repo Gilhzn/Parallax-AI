@@ -83,12 +83,16 @@ function demoTour(): Tour {
 
 // Static tours: real reconstructions published into public/tours/ by the
 // free CPU reconstruction workflow (.github/workflows/reconstruct.yml).
-function staticTour(tourId: string): Tour {
-  return {
-    job_id: tourId,
-    splat_url: `${import.meta.env.BASE_URL}tours/${encodeURIComponent(tourId)}.splat`,
-    manifest: { static: true },
-  };
+async function staticTour(tourId: string): Promise<Tour> {
+  const base = `${import.meta.env.BASE_URL}tours/${encodeURIComponent(tourId)}`;
+  let manifest: Record<string, unknown> = { static: true };
+  try {
+    const resp = await fetch(`${base}.json`);
+    if (resp.ok) manifest = { static: true, ...(await resp.json()) };
+  } catch {
+    /* manifest is optional */
+  }
+  return { job_id: tourId, splat_url: `${base}.splat`, manifest };
 }
 // ───────────────────────────────────────────────────────────────────────────
 
