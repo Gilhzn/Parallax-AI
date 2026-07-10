@@ -43,6 +43,38 @@ export const REAL_RECONSTRUCTION_UPLOAD_URL = `https://github.com/${REPO}/upload
 export const ACTIONS_URL = `https://github.com/${REPO}/actions/workflows/reconstruct.yml`;
 // Fine-grained token: Only select repositories -> Parallax-AI; Contents: Read and write.
 export const TOKEN_CREATE_URL = 'https://github.com/settings/personal-access-tokens/new';
+// One-click classic token with the right scope preselected — the easy path.
+export const TOKEN_QUICK_URL =
+  'https://github.com/settings/tokens/new?scopes=repo&description=SpatialScan%20uploads';
+
+/** Quick sanity check that a pasted value even looks like a GitHub token. */
+export function looksLikeGithubToken(token: string): boolean {
+  const t = token.trim();
+  return /^(github_pat_[A-Za-z0-9_]{30,}|ghp_[A-Za-z0-9]{30,}|gho_[A-Za-z0-9]{30,})$/.test(t);
+}
+
+/** Verify the token can actually see the repo before uploading anything. */
+export async function verifyGithubToken(token: string): Promise<void> {
+  let resp: Response;
+  try {
+    resp = await fetch(`https://api.github.com/repos/${REPO}`, {
+      headers: { Authorization: `Bearer ${token.trim()}`, Accept: 'application/vnd.github+json' },
+    });
+  } catch {
+    throw new Error('Could not reach GitHub — check your connection and try again.');
+  }
+  if (resp.status === 401) {
+    throw new Error(
+      'GitHub rejected the token (invalid or expired). Make sure you copied the ENTIRE token — it starts with github_pat_ or ghp_.',
+    );
+  }
+  if (resp.status === 403 || resp.status === 404) {
+    throw new Error(
+      'The token works but has no access to the Parallax-AI repository. Recreate it with the repo selected (or use the quick classic-token link).',
+    );
+  }
+  if (!resp.ok) throw new Error(`GitHub token check failed (HTTP ${resp.status}).`);
+}
 
 const TOKEN_KEY = 'spatialscan-github-token';
 

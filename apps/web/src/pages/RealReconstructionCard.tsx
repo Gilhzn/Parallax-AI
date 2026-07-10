@@ -4,11 +4,14 @@ import { Link } from 'react-router-dom';
 import {
   ACTIONS_URL,
   getGithubToken,
+  looksLikeGithubToken,
   MAX_REAL_UPLOAD_MB,
   queueRealReconstruction,
   setGithubToken,
   TOKEN_CREATE_URL,
+  TOKEN_QUICK_URL,
   tourReady,
+  verifyGithubToken,
 } from '../api/client';
 
 const POLL_MS = 45_000;
@@ -38,8 +41,17 @@ export default function RealReconstructionCard({ video }: { video: File }) {
       setNeedToken(true);
       return;
     }
+    if (!looksLikeGithubToken(tok)) {
+      setNeedToken(true);
+      setError(
+        'That does not look like a complete GitHub token — it should start with github_pat_ or ' +
+          'ghp_ and be much longer. Copy the WHOLE value shown after creating the token.',
+      );
+      return;
+    }
     setBusy(true);
     try {
+      await verifyGithubToken(tok);
       setGithubToken(tok);
       const result = await queueRealReconstruction(video, tok);
       setQueued(result);
@@ -102,12 +114,23 @@ export default function RealReconstructionCard({ video }: { video: File }) {
         <div style={{ marginBottom: 10 }}>
           <p className="hint" style={{ margin: '0 0 8px' }}>
             One-time setup: paste a GitHub token so the app may add your video to the
-            reconstruction queue. It is stored only in this browser.{' '}
+            reconstruction queue. It is stored only in this browser.
+          </p>
+          <p className="hint" style={{ margin: '0 0 8px' }}>
+            <strong>Easiest:</strong>{' '}
+            <a href={TOKEN_QUICK_URL} target="_blank" rel="noreferrer">
+              open this link
+            </a>
+            , scroll down, press the green <em>Generate token</em> button, then copy the whole
+            value that starts with <code>ghp_</code> and paste it below.
+          </p>
+          <p className="hint" style={{ margin: '0 0 8px' }}>
+            (Advanced, more restricted:{' '}
             <a href={TOKEN_CREATE_URL} target="_blank" rel="noreferrer">
-              Create one here
+              fine-grained token
             </a>{' '}
-            — choose <em>Only select repositories → Parallax-AI</em> and set{' '}
-            <em>Contents: Read and write</em>.
+            with <em>Only select repositories → Parallax-AI</em> and <em>Contents: Read and
+            write</em>.)
           </p>
           <input
             type="password"
