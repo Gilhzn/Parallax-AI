@@ -6,6 +6,8 @@
 
 **🔗 Live demo:** <https://gilhzn.github.io/Parallax-AI/> — the full web app in *demo mode* (no GPU backend attached): upload any short video to see the simulated pipeline, or jump straight into the [sample 3D tour](https://gilhzn.github.io/Parallax-AI/tour/sample). Deployed automatically to GitHub Pages on every push (`.github/workflows/pages.yml`).
 
+**🎥 Reconstruct YOUR video — free, no GPU, no extra accounts:** upload a video into [`captures/`](captures/) (GitHub web: *Add file → Upload files*) or run the **"Reconstruct video"** workflow from the Actions tab with a video URL. It runs REAL structure-from-motion (COLMAP) + Gaussian Splatting training (OpenSplat, CPU) on GitHub's free runners and publishes a walkable tour of your actual footage to `…/tour/<name>`. Expect 1–3 hours and preview-grade quality; the GPU paths in [docs/QUALITY.md](docs/QUALITY.md) give full quality in minutes.
+
 ## How it works
 
 ```

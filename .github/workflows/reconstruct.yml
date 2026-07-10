@@ -1,0 +1,160 @@
+name: Reconstruct video (real 3DGS, free CPU)
+
+# REAL reconstruction with zero accounts and zero cost: runs COLMAP + OpenSplat
+# on GitHub's free CPU runners and publishes the tour to the live site.
+#
+# Two ways to start a reconstruction:
+#   1. Actions tab -> this workflow -> "Run workflow": paste a direct video URL
+#      (or "banana" for the public sample dataset).
+#   2. Upload a video file into captures/ (GitHub web: Add file -> Upload files).
+#
+# CPU training is ~100x slower than GPU — expect 1-3 hours. Preview-grade
+# quality; for maximum quality use the GPU paths (docs/QUALITY.md).
+
+on:
+  workflow_dispatch:
+    inputs:
+      source:
+        description: 'Direct video URL, or "banana" for the sample dataset'
+        required: true
+        default: "banana"
+      name:
+        description: "Tour name (letters/digits/dashes) — becomes /tour/<name>"
+        required: true
+        default: "my-room"
+      iterations:
+        description: "Training iterations (800 fast preview, 3000 better, slower)"
+        default: "800"
+      downscale:
+        description: "Frame downscale factor (2 = half resolution)"
+        default: "2"
+      max_frames:
+        description: "Max frames fed to COLMAP"
+        default: "48"
+  push:
+    paths: ["captures/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: reconstruct
+
+jobs:
+  reconstruct:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq colmap ffmpeg cmake build-essential libopencv-dev unzip > /dev/null
+          colmap -h | head -2 || true
+
+      - name: Cache OpenSplat + libtorch
+        id: cache-opensplat
+        uses: actions/cache@v4
+        with:
+          path: |
+            libtorch
+            OpenSplat/build
+          key: opensplat-cpu-v1
+
+      - name: Build OpenSplat (CPU, first run only)
+        if: steps.cache-opensplat.outputs.cache-hit != 'true'
+        run: |
+          curl -sL -o libtorch.zip "https://download.pytorch.org/libtorch/cpu/libtorch-cxx11-abi-shared-with-deps-2.4.1%2Bcpu.zip"
+          unzip -q libtorch.zip
+          git clone --depth 1 https://github.com/pierotofy/OpenSplat
+          cd OpenSplat && mkdir -p build && cd build
+          cmake -DCMAKE_PREFIX_PATH="$GITHUB_WORKSPACE/libtorch" -DCMAKE_BUILD_TYPE=Release .. > cmake.log || (tail -50 cmake.log && exit 1)
+          make -j"$(nproc)" 2>&1 | tail -5
+
+      - name: Worker package
+        run: python3 -m pip install -q -e services/worker gdown
+
+      - name: Resolve job parameters
+        id: params
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "source=${{ github.event.inputs.source }}" >> "$GITHUB_OUTPUT"
+            echo "name=${{ github.event.inputs.name }}" >> "$GITHUB_OUTPUT"
+            echo "iterations=${{ github.event.inputs.iterations }}" >> "$GITHUB_OUTPUT"
+            echo "downscale=${{ github.event.inputs.downscale }}" >> "$GITHUB_OUTPUT"
+            echo "max_frames=${{ github.event.inputs.max_frames }}" >> "$GITHUB_OUTPUT"
+          else
+            # push into captures/: newest video wins; request.json can override params
+            VIDEO=$(ls -t captures/*.mp4 captures/*.mov captures/*.webm 2>/dev/null | head -1 || true)
+            if [ -n "$VIDEO" ]; then
+              echo "source=file:$VIDEO" >> "$GITHUB_OUTPUT"
+              BASE=$(basename "$VIDEO"); echo "name=${BASE%.*}" >> "$GITHUB_OUTPUT"
+            else
+              echo "source=$(python3 -c 'import json;print(json.load(open("captures/request.json")).get("source","banana"))')" >> "$GITHUB_OUTPUT"
+              echo "name=$(python3 -c 'import json;print(json.load(open("captures/request.json")).get("name","my-room"))')" >> "$GITHUB_OUTPUT"
+            fi
+            REQ=captures/request.json
+            get() { python3 -c "import json;print(json.load(open('$REQ')).get('$1','$2'))" 2>/dev/null || echo "$2"; }
+            echo "iterations=$(get iterations 800)" >> "$GITHUB_OUTPUT"
+            echo "downscale=$(get downscale 2)" >> "$GITHUB_OUTPUT"
+            echo "max_frames=$(get max_frames 48)" >> "$GITHUB_OUTPUT"
+          fi
+          cat "$GITHUB_OUTPUT"
+
+      - name: Fetch source
+        id: fetch
+        run: |
+          SRC="${{ steps.params.outputs.source }}"
+          if [ "$SRC" = "banana" ]; then
+            gdown 1mUUZFDo2swd6CE5vwPPkjN63Hyf4XyEv -O banana.zip
+            unzip -q banana.zip -d banana-data
+            echo "mode=project" >> "$GITHUB_OUTPUT"
+            echo "path=banana-data" >> "$GITHUB_OUTPUT"
+          elif [ "${SRC#file:}" != "$SRC" ]; then
+            echo "mode=video" >> "$GITHUB_OUTPUT"
+            echo "path=${SRC#file:}" >> "$GITHUB_OUTPUT"
+          else
+            curl -L --max-filesize 500000000 -o input-video "$SRC"
+            file input-video
+            echo "mode=video" >> "$GITHUB_OUTPUT"
+            echo "path=input-video" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Reconstruct (COLMAP -> OpenSplat, CPU)
+        run: |
+          export LD_LIBRARY_PATH="$GITHUB_WORKSPACE/libtorch/lib:$LD_LIBRARY_PATH"
+          OpenSplat/build/opensplat --help | head -40 || true
+          if [ "${{ steps.fetch.outputs.mode }}" = "project" ]; then
+            SRC_ARG="--project ${{ steps.fetch.outputs.path }}"
+          else
+            SRC_ARG="--video ${{ steps.fetch.outputs.path }}"
+          fi
+          python3 scripts/cpu_reconstruct.py $SRC_ARG \
+            --name "${{ steps.params.outputs.name }}" \
+            --iterations "${{ steps.params.outputs.iterations }}" \
+            --downscale "${{ steps.params.outputs.downscale }}" \
+            --max-frames "${{ steps.params.outputs.max_frames }}" \
+            --opensplat OpenSplat/build/opensplat \
+            --out apps/web/public/tours
+
+      - name: Publish tour to the live site
+        run: |
+          NAME="${{ steps.params.outputs.name }}"
+          git config user.name "spatialscan-bot"
+          git config user.email "actions@github.com"
+          git add apps/web/public/tours
+          git commit -m "Add tour '$NAME' (real CPU reconstruction)"
+          git pull --rebase origin "${{ github.ref_name }}"
+          git push origin HEAD:"${{ github.ref_name }}"
+
+      - name: Tour link
+        run: |
+          NAME="${{ steps.params.outputs.name }}"
+          {
+            echo "## ✅ Reconstruction finished"
+            echo ""
+            echo "**Walk through it:** https://gilhzn.github.io/Parallax-AI/tour/$NAME"
+            echo ""
+            echo "(Give GitHub Pages ~2 minutes to redeploy after this run.)"
+          } >> "$GITHUB_STEP_SUMMARY"

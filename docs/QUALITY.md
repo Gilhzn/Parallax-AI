@@ -49,6 +49,7 @@ The single biggest quality factor is the capture itself:
 
 | Where | How | Notes |
 |---|---|---|
+| **Free — GitHub Actions (CPU)** | upload video to `captures/` or run the *Reconstruct video* workflow | zero accounts, fully automated, publishes straight to the live site; 1–3h, **preview-grade** (CPU ≈ 100x slower than GPU) |
 | **Free — Google Colab T4** | notebook: [`notebooks/spatialscan_worker_colab.ipynb`](../notebooks/spatialscan_worker_colab.ipynb), set `QUALITY='high'` | 45–90 min; free tier may disconnect — `balanced` is the safe default there |
 | **Colab Pro (A100)** | same notebook | `high` in ~10–15 min |
 | **RunPod pod (interactive)** | worker Docker image + `python -m spatialscan_worker.cli --quality high` | 4090 ≈ $0.35/hr billed per second |

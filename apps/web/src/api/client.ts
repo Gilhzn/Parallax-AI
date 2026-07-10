@@ -74,6 +74,16 @@ function demoTour(): Tour {
     manifest: { demo: true, note: 'Client-side demo — no backend connected' },
   };
 }
+
+// Static tours: real reconstructions published into public/tours/ by the
+// free CPU reconstruction workflow (.github/workflows/reconstruct.yml).
+function staticTour(tourId: string): Tour {
+  return {
+    job_id: tourId,
+    splat_url: `${import.meta.env.BASE_URL}tours/${encodeURIComponent(tourId)}.splat`,
+    manifest: { static: true },
+  };
+}
 // ───────────────────────────────────────────────────────────────────────────
 
 async function ensureOk(resp: Response): Promise<Response> {
@@ -121,6 +131,12 @@ export async function getJob(jobId: string): Promise<JobStatus> {
 
 export async function getTour(jobId: string): Promise<Tour> {
   if (isDemoJob(jobId)) return demoTour();
-  const resp = await ensureOk(await fetch(`${BASE}/api/tours/${jobId}`));
-  return resp.json();
+  if (FORCED_DEMO) return staticTour(jobId);
+  try {
+    const resp = await ensureOk(await fetch(`${BASE}/api/tours/${jobId}`));
+    return resp.json();
+  } catch (e) {
+    if (e instanceof TypeError) return staticTour(jobId); // no backend at all
+    throw e;
+  }
 }
