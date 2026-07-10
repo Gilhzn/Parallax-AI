@@ -12,11 +12,15 @@ router = APIRouter(prefix="/api")
 _ALLOWED_VIDEO_TYPES = {"video/mp4", "video/quicktime", "video/webm"}
 
 
+_QUALITY_PRESETS = {"fast", "balanced", "high"}
+
+
 @router.post("/jobs", response_model=JobCreateResponse, status_code=201)
 async def create_job(
     request: Request,
     video: UploadFile = File(...),
     metadata: str = Form("{}"),
+    quality: str = Form("balanced"),
 ) -> JobCreateResponse:
     settings = request.app.state.settings
     storage = request.app.state.storage
@@ -27,6 +31,9 @@ async def create_job(
         video.filename or ""
     ).lower().endswith((".mp4", ".mov", ".webm")):
         raise HTTPException(415, f"unsupported video type '{video.content_type}'")
+
+    if quality not in _QUALITY_PRESETS:
+        raise HTTPException(422, f"unknown quality '{quality}' (fast|balanced|high)")
 
     try:
         meta = VideoMetadata.model_validate_json(metadata)
@@ -50,7 +57,7 @@ async def create_job(
     video_key = f"jobs/{job_id}/input.mp4"
     storage.put_bytes(video_key, data, video.content_type or "video/mp4")
     store.create(job_id, video_key, meta.model_dump())
-    trigger.dispatch(job_id, video_key, meta.model_dump())
+    trigger.dispatch(job_id, video_key, meta.model_dump(), quality=quality)
     return JobCreateResponse(job_id=job_id)
 
 

@@ -1,12 +1,22 @@
-"""Stage 1 — extract frames from the source video at ~FRAMES_PER_SECOND fps."""
+"""Stage 1 — extract frames from the source video.
+
+Real mode extracts candidate frames with ffmpeg at the preset's rate, at the
+video's ORIGINAL resolution (no downscaling — quality is decided here first),
+then optionally discards blurry frames using the variance-of-Laplacian focus
+metric so motion blur never poisons COLMAP or training.
+"""
 
 from __future__ import annotations
 
+import logging
 import math
 import subprocess
 from pathlib import Path
 
 from ..capabilities import has_ffmpeg, resolve_stage_mode
+from ..quality import QualityPreset, laplacian_sharpness, select_sharpest
+
+log = logging.getLogger("spatialscan.worker")
 
 # A 1x1 valid JPEG so mock frames are real image files (keeps downstream
 # tools that sniff magic bytes happy).
@@ -29,7 +39,7 @@ _TINY_JPEG = bytes.fromhex(
 def extract_frames(
     video_path: Path,
     out_dir: Path,
-    fps: float,
+    preset: QualityPreset,
     pipeline_mode: str,
     video_duration_sec: float | None = None,
 ) -> list[Path]:
@@ -37,30 +47,54 @@ def extract_frames(
     mode = resolve_stage_mode(pipeline_mode, has_ffmpeg(), "frames")
     out_dir.mkdir(parents=True, exist_ok=True)
     if mode == "real":
-        _extract_real(video_path, out_dir, fps)
+        _extract_real(video_path, out_dir, preset)
     else:
-        _extract_mock(out_dir, fps, video_duration_sec)
+        _extract_mock(out_dir, preset.fps, video_duration_sec)
     frames = sorted(out_dir.glob("frame_*.jpg"))
     if not frames:
         raise RuntimeError(f"frame extraction produced no frames in {out_dir}")
     return frames
 
 
-def _extract_real(video_path: Path, out_dir: Path, fps: float) -> None:
-    cmd = [
-        "ffmpeg",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(video_path),
-        "-vf",
-        f"fps={fps}",
-        "-q:v",
-        "2",
-        str(out_dir / "frame_%05d.jpg"),
-    ]
-    subprocess.run(cmd, check=True)
+def _extract_real(video_path: Path, out_dir: Path, preset: QualityPreset) -> None:
+    # Full-resolution candidates; -q:v 1 = highest JPEG quality.
+    subprocess.run(
+        [
+            "ffmpeg", "-hide_banner", "-loglevel", "error",
+            "-i", str(video_path),
+            "-vf", f"fps={preset.fps}",
+            "-q:v", "1",
+            str(out_dir / "frame_%05d.jpg"),
+        ],
+        check=True,
+    )
+    candidates = sorted(out_dir.glob("frame_*.jpg"))
+    keep = min(int(math.ceil(len(candidates) * preset.keep_ratio)), preset.max_frames)
+    if keep >= len(candidates):
+        return
+
+    sharpness = [_frame_sharpness(p) for p in candidates]
+    kept = set(select_sharpest(sharpness, keep))
+    dropped = 0
+    for i, path in enumerate(candidates):
+        if i not in kept:
+            path.unlink()
+            dropped += 1
+    log.info(
+        "frames: kept %d/%d sharpest candidates (dropped %d blurry/redundant)",
+        len(kept), len(candidates), dropped,
+    )
+
+
+def _frame_sharpness(path: Path) -> float:
+    import numpy as np
+    from PIL import Image
+
+    with Image.open(path) as img:
+        # Focus metric on a ~480px grayscale thumbnail: robust and fast.
+        img.thumbnail((480, 480))
+        gray = np.asarray(img.convert("L"), dtype=np.float32)
+    return laplacian_sharpness(gray)
 
 
 def _extract_mock(out_dir: Path, fps: float, video_duration_sec: float | None) -> None:

@@ -30,18 +30,28 @@ log = logging.getLogger("spatialscan.api")
 QUEUE_KEY = "spatialscan:jobs"
 
 
-def build_payload(job_id: str, video_key: str, metadata: dict | None, storage: Storage) -> dict:
-    return {
+def build_payload(
+    job_id: str, video_key: str, metadata: dict | None, storage: Storage, quality: str = "balanced"
+) -> dict:
+    payload = {
         "job_id": job_id,
         "video_url": storage.presign_get(f"jobs/{job_id}/input.mp4"),
         "splat_put_url": storage.presign_put(f"jobs/{job_id}/scene.splat"),
         "manifest_put_url": storage.presign_put(f"jobs/{job_id}/manifest.json"),
+        "quality": quality,
         "metadata": metadata or {},
     }
+    if quality == "high":
+        # High quality keeps the lossless PLY (full spherical harmonics)
+        # next to the web-ready .splat.
+        payload["ply_put_url"] = storage.presign_put(f"jobs/{job_id}/scene.ply")
+    return payload
 
 
 class JobTrigger(Protocol):
-    def dispatch(self, job_id: str, video_key: str, metadata: dict | None) -> None: ...
+    def dispatch(
+        self, job_id: str, video_key: str, metadata: dict | None, quality: str = "balanced"
+    ) -> None: ...
 
 
 class InlineTrigger:
@@ -52,13 +62,15 @@ class InlineTrigger:
         self.store = store
         self.pipeline_mode = pipeline_mode
 
-    def dispatch(self, job_id: str, video_key: str, metadata: dict | None) -> None:
+    def dispatch(
+        self, job_id: str, video_key: str, metadata: dict | None, quality: str = "balanced"
+    ) -> None:
         thread = threading.Thread(
-            target=self._run, args=(job_id, video_key, metadata), daemon=True
+            target=self._run, args=(job_id, video_key, metadata, quality), daemon=True
         )
         thread.start()
 
-    def _run(self, job_id: str, video_key: str, metadata: dict | None) -> None:
+    def _run(self, job_id: str, video_key: str, metadata: dict | None, quality: str) -> None:
         import tempfile
         from pathlib import Path
 
@@ -76,6 +88,7 @@ class InlineTrigger:
                     output_dir=tmp_path / "out",
                     metadata=metadata,
                     pipeline_mode=self.pipeline_mode,
+                    quality=quality,
                 )
                 result = run_pipeline(
                     spec,
@@ -110,8 +123,10 @@ class RedisQueueTrigger:
         self.storage = storage
         self.r = redis_client
 
-    def dispatch(self, job_id: str, video_key: str, metadata: dict | None) -> None:
-        payload = build_payload(job_id, video_key, metadata, self.storage)
+    def dispatch(
+        self, job_id: str, video_key: str, metadata: dict | None, quality: str = "balanced"
+    ) -> None:
+        payload = build_payload(job_id, video_key, metadata, self.storage, quality)
         self.r.lpush(QUEUE_KEY, json.dumps(payload))
 
 
@@ -124,8 +139,10 @@ class RunPodTrigger:
         self.api_key = api_key
         self.base = f"https://api.runpod.ai/v2/{endpoint_id}"
 
-    def dispatch(self, job_id: str, video_key: str, metadata: dict | None) -> None:
-        payload = build_payload(job_id, video_key, metadata, self.storage)
+    def dispatch(
+        self, job_id: str, video_key: str, metadata: dict | None, quality: str = "balanced"
+    ) -> None:
+        payload = build_payload(job_id, video_key, metadata, self.storage, quality)
         resp = httpx.post(
             f"{self.base}/run",
             json={"input": payload},

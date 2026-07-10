@@ -90,11 +90,18 @@ async function ensureOk(resp: Response): Promise<Response> {
   return resp;
 }
 
-export async function createJob(video: File, metadata: VideoMetadata): Promise<{ job_id: string }> {
+export type QualityPreset = 'fast' | 'balanced' | 'high';
+
+export async function createJob(
+  video: File,
+  metadata: VideoMetadata,
+  quality: QualityPreset = 'balanced',
+): Promise<{ job_id: string }> {
   if (FORCED_DEMO) return startDemoJob();
   const form = new FormData();
   form.append('video', video);
   form.append('metadata', JSON.stringify(metadata));
+  form.append('quality', quality);
   try {
     const resp = await ensureOk(await fetch(`${BASE}/api/jobs`, { method: 'POST', body: form }));
     return resp.json();

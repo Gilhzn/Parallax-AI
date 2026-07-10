@@ -26,9 +26,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--video", required=True, type=Path, help="input video file (mp4)")
     parser.add_argument("--out", required=True, type=Path, help="output directory")
     parser.add_argument("--mode", default="auto", choices=["mock", "auto", "real"])
-    parser.add_argument("--fps", type=float, default=3.0, help="frame extraction rate")
-    parser.add_argument("--iterations", type=int, default=5000, help="3DGS training iterations")
-    parser.add_argument("--max-mb", type=float, default=40.0, help=".splat size budget (MB)")
+    parser.add_argument(
+        "--quality", default="balanced", choices=["fast", "balanced", "high"],
+        help="quality preset; 'high' = full resolution, sharp-frame selection, "
+        "splatfacto-big @ 30k iterations, lossless PLY kept",
+    )
+    parser.add_argument("--fps", type=float, default=None, help="override: frame extraction rate")
+    parser.add_argument("--iterations", type=int, default=None, help="override: training iterations")
+    parser.add_argument("--max-mb", type=float, default=None, help="override: .splat size budget (MB)")
     args = parser.parse_args(argv)
 
     if not args.video.exists():
@@ -42,6 +47,7 @@ def main(argv: list[str] | None = None) -> int:
         video_path=args.video,
         output_dir=args.out,
         pipeline_mode=args.mode,
+        quality=args.quality,
         frames_per_second=args.fps,
         train_iterations=args.iterations,
         splat_max_mb=args.max_mb,
@@ -49,6 +55,8 @@ def main(argv: list[str] | None = None) -> int:
     result = run_pipeline(spec, report=report)
     print(json.dumps(result.manifest, indent=2))
     print(f"\nscene: {result.splat_path}")
+    if result.ply_path:
+        print(f"lossless archive: {result.ply_path}")
     return 0
 
 

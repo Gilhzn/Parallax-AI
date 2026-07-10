@@ -86,6 +86,7 @@ All switches are environment variables — see [.env.example](.env.example).
 - [docs/PRD.en.md](docs/PRD.en.md) — Product Requirements (English)
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system architecture & data flow
 - [docs/TEAM_SKILLS.md](docs/TEAM_SKILLS.md) — the skillset needed to build/extend this
+- [docs/QUALITY.md](docs/QUALITY.md) — quality presets; how to reconstruct at **full resolution with no compromises**
 - [docs/FREE_TIER_TESTING.md](docs/FREE_TIER_TESTING.md) — free GPU testing (Colab / GCP credits)
 
 ## License

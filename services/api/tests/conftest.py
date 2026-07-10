@@ -56,8 +56,8 @@ def noop_client(settings, redis_client, storage):
     class NoopTrigger:
         dispatched: list = []
 
-        def dispatch(self, job_id, video_key, metadata):
-            self.dispatched.append((job_id, video_key, metadata))
+        def dispatch(self, job_id, video_key, metadata, quality="balanced"):
+            self.dispatched.append((job_id, video_key, metadata, quality))
 
     app = create_app(
         settings=settings, redis_client=redis_client, storage=storage, trigger=NoopTrigger()

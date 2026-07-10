@@ -20,9 +20,9 @@ docker push <registry>/spatialscan-worker:latest
 | Min workers | **0** | Scale to zero — the whole point |
 | Max workers | 2–3 for MVP | Cap burst spend |
 | Idle timeout | 30–60s | Absorbs bursts without cold-starting every job |
-| Execution timeout | 900s | A job stuck past 15 min is failed, not billed forever |
+| Execution timeout | 3600s | `quality=high` (30k iterations, full resolution) needs up to ~30 min on a 4090 |
 | Container disk | 30GB | Model weights + COLMAP workspace |
-| Env vars | `PIPELINE_MODE=real`, `FRAMES_PER_SECOND=3`, `TRAIN_ITERATIONS=5000`, `SPLAT_MAX_MB=40` | Same knobs as everywhere else |
+| Env vars | `PIPELINE_MODE=real` (quality arrives per job in the payload; see docs/QUALITY.md) | Same knobs as everywhere else |
 
 No storage credentials on the endpoint — jobs arrive with presigned GET/PUT URLs.
 

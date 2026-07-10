@@ -40,6 +40,14 @@ def _estimate_real(frames_dir: Path, out_dir: Path) -> None:
         str(out_dir),
         "--sfm-tool",
         "colmap",
+        # Video frames are temporally ordered: sequential matching is both
+        # faster and more reliable than exhaustive for this footage.
+        "--matching-method",
+        "sequential",
+        # Keep original resolution as the primary copy (downscales are still
+        # generated for previews, but training can request scale factor 1).
+        "--num-downscales",
+        "2",
     ]
     subprocess.run(cmd, check=True)
 

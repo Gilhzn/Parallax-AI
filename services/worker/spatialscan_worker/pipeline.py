@@ -4,14 +4,20 @@ Every entrypoint — the dev Redis queue worker, the RunPod serverless handler,
 and the Colab/GCP CLI — funnels into :func:`run_pipeline`. Keeping one code
 path is the load-bearing structural decision of the worker.
 
+Quality is controlled by a named preset (see :mod:`.quality`) with optional
+per-field overrides; ``high`` reconstructs at full input resolution with no
+quality-reducing shortcuts.
+
 For remote entrypoints, :func:`process_payload` wraps the pipeline with
 presigned-URL download/upload so the worker never needs storage credentials.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
+import shutil
 import tempfile
 import time
 from collections.abc import Callable
@@ -20,6 +26,7 @@ from pathlib import Path
 
 import httpx
 
+from .quality import QualityPreset, get_preset
 from .stages import colmap, export, frames, train
 
 # stage name -> share of overall progress
@@ -35,8 +42,9 @@ STAGES = [name for name, _ in STAGE_WEIGHTS]
 Reporter = Callable[[str, float], None]
 
 
-def _env_float(name: str, default: float) -> float:
-    return float(os.environ.get(name, default))
+def _env_opt_float(name: str) -> float | None:
+    raw = os.environ.get(name)
+    return float(raw) if raw not in (None, "") else None
 
 
 @dataclass
@@ -46,9 +54,26 @@ class JobSpec:
     output_dir: Path
     metadata: dict | None = None
     pipeline_mode: str = field(default_factory=lambda: os.environ.get("PIPELINE_MODE", "auto"))
-    frames_per_second: float = field(default_factory=lambda: _env_float("FRAMES_PER_SECOND", 3))
-    train_iterations: int = field(default_factory=lambda: int(_env_float("TRAIN_ITERATIONS", 5000)))
-    splat_max_mb: float = field(default_factory=lambda: _env_float("SPLAT_MAX_MB", 40))
+    quality: str = field(default_factory=lambda: os.environ.get("QUALITY_PRESET", "balanced"))
+    # Optional overrides on top of the preset (None = use the preset's value)
+    frames_per_second: float | None = field(default_factory=lambda: _env_opt_float("FRAMES_PER_SECOND"))
+    train_iterations: int | None = field(
+        default_factory=lambda: (
+            int(v) if (v := _env_opt_float("TRAIN_ITERATIONS")) is not None else None
+        )
+    )
+    splat_max_mb: float | None = field(default_factory=lambda: _env_opt_float("SPLAT_MAX_MB"))
+
+    def resolved_preset(self) -> QualityPreset:
+        preset = get_preset(self.quality)
+        overrides = {}
+        if self.frames_per_second is not None:
+            overrides["fps"] = self.frames_per_second
+        if self.train_iterations is not None:
+            overrides["train_iterations"] = self.train_iterations
+        if self.splat_max_mb is not None:
+            overrides["splat_max_mb"] = self.splat_max_mb
+        return dataclasses.replace(preset, **overrides) if overrides else preset
 
 
 @dataclass
@@ -56,10 +81,12 @@ class PipelineResult:
     splat_path: Path
     manifest_path: Path
     manifest: dict
+    ply_path: Path | None = None  # lossless archive, quality presets with keep_ply
 
 
 def run_pipeline(spec: JobSpec, report: Reporter | None = None) -> PipelineResult:
     started = time.time()
+    preset = spec.resolved_preset()
     work = spec.output_dir
     work.mkdir(parents=True, exist_ok=True)
 
@@ -82,7 +109,7 @@ def run_pipeline(spec: JobSpec, report: Reporter | None = None) -> PipelineResul
     frame_paths = frames.extract_frames(
         spec.video_path,
         work / "frames",
-        fps=spec.frames_per_second,
+        preset=preset,
         pipeline_mode=spec.pipeline_mode,
         video_duration_sec=duration,
     )
@@ -95,17 +122,23 @@ def run_pipeline(spec: JobSpec, report: Reporter | None = None) -> PipelineResul
     emit("poses", 1.0)
 
     emit("training", 0.0)
-    cloud = train.train_gaussians(
+    trained = train.train_gaussians(
         processed_dir,
         work,
-        iterations=spec.train_iterations,
+        preset=preset,
         pipeline_mode=spec.pipeline_mode,
         on_progress=lambda p: emit("training", p),
     )
     emit("training", 1.0)
 
     emit("export", 0.0)
-    splat_path = export.export_splat(cloud, work / "scene.splat", max_mb=spec.splat_max_mb)
+    splat_path = export.export_splat(trained.cloud, work / "scene.splat", max_mb=preset.splat_max_mb)
+
+    ply_path = None
+    if trained.ply_path is not None and trained.ply_path.exists():
+        ply_path = work / "scene.ply"
+        shutil.copyfile(trained.ply_path, ply_path)
+
     manifest = {
         "job_id": spec.job_id,
         "splat_file": splat_path.name,
@@ -113,7 +146,12 @@ def run_pipeline(spec: JobSpec, report: Reporter | None = None) -> PipelineResul
         "size_bytes": splat_path.stat().st_size,
         "frame_count": len(frame_paths),
         "pipeline_mode": spec.pipeline_mode,
-        "train_iterations": spec.train_iterations,
+        "quality": preset.name,
+        "train_iterations": preset.train_iterations,
+        "model": preset.model,
+        "sh_degree": preset.sh_degree,
+        "full_resolution": preset.full_resolution,
+        "ply_file": ply_path.name if ply_path else None,
         "elapsed_sec": round(time.time() - started, 2),
         "metadata": spec.metadata or {},
     }
@@ -121,7 +159,9 @@ def run_pipeline(spec: JobSpec, report: Reporter | None = None) -> PipelineResul
     manifest_path.write_text(json.dumps(manifest, indent=2))
     emit("export", 1.0)
 
-    return PipelineResult(splat_path=splat_path, manifest_path=manifest_path, manifest=manifest)
+    return PipelineResult(
+        splat_path=splat_path, manifest_path=manifest_path, manifest=manifest, ply_path=ply_path
+    )
 
 
 def process_payload(payload: dict, report: Reporter | None = None) -> dict:
@@ -134,30 +174,39 @@ def process_payload(payload: dict, report: Reporter | None = None) -> dict:
           "video_url": "<presigned GET>",
           "splat_put_url": "<presigned PUT>",
           "manifest_put_url": "<presigned PUT>",
-          "metadata": {...}                     # optional client metadata
+          "ply_put_url": "<presigned PUT>",     # optional, quality=high
+          "quality": "fast|balanced|high",       # optional
+          "metadata": {...}                      # optional client metadata
         }
     """
     job_id = payload["job_id"]
     with tempfile.TemporaryDirectory(prefix=f"spatialscan-{job_id}-") as tmp:
         tmp_path = Path(tmp)
         video_path = tmp_path / "input.mp4"
-        with httpx.Client(timeout=120) as client:
+        with httpx.Client(timeout=300) as client:
             resp = client.get(payload["video_url"])
             resp.raise_for_status()
             video_path.write_bytes(resp.content)
 
+            spec_kwargs = {}
+            if payload.get("quality"):
+                spec_kwargs["quality"] = payload["quality"]
             spec = JobSpec(
                 job_id=job_id,
                 video_path=video_path,
                 output_dir=tmp_path / "out",
                 metadata=payload.get("metadata"),
+                **spec_kwargs,
             )
             result = run_pipeline(spec, report=report)
 
-            for url_key, path, content_type in (
+            uploads = [
                 ("splat_put_url", result.splat_path, "application/octet-stream"),
                 ("manifest_put_url", result.manifest_path, "application/json"),
-            ):
+            ]
+            if result.ply_path is not None and payload.get("ply_put_url"):
+                uploads.append(("ply_put_url", result.ply_path, "application/octet-stream"))
+            for url_key, path, content_type in uploads:
                 put = client.put(
                     payload[url_key],
                     content=path.read_bytes(),

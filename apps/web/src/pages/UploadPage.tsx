@@ -1,14 +1,21 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { createJob, type VideoMetadata } from '../api/client';
+import { createJob, type QualityPreset, type VideoMetadata } from '../api/client';
 import { checkDuration, extractVideoMetadata, MAX_VIDEO_SECONDS } from '../lib/videoMetadata';
+
+const QUALITY_OPTIONS: { value: QualityPreset; label: string; hint: string }[] = [
+  { value: 'fast', label: 'Fast', hint: '~3 min · preview quality' },
+  { value: 'balanced', label: 'Balanced', hint: '~7 min · great quality' },
+  { value: 'high', label: 'Maximum', hint: '~30 min · full resolution, no compromises' },
+];
 
 export default function UploadPage() {
   const navigate = useNavigate();
   const inputRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [meta, setMeta] = useState<VideoMetadata | null>(null);
+  const [quality, setQuality] = useState<QualityPreset>('balanced');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -36,7 +43,7 @@ export default function UploadPage() {
     setBusy(true);
     setError(null);
     try {
-      const { job_id } = await createJob(file, meta);
+      const { job_id } = await createJob(file, meta, quality);
       navigate(`/jobs/${job_id}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -97,6 +104,30 @@ export default function UploadPage() {
             <span>Size</span>
             <span>{(meta.size_bytes / 1024 / 1024).toFixed(1)} MB</span>
           </div>
+        </div>
+      )}
+
+      {file && (
+        <div className="card" role="radiogroup" aria-label="Reconstruction quality">
+          <p className="hint" style={{ margin: '0 0 10px' }}>
+            Reconstruction quality
+          </p>
+          {QUALITY_OPTIONS.map((opt) => (
+            <label key={opt.value} className="quality-row">
+              <input
+                type="radio"
+                name="quality"
+                value={opt.value}
+                checked={quality === opt.value}
+                onChange={() => setQuality(opt.value)}
+              />
+              <span>
+                <strong>{opt.label}</strong>
+                <br />
+                <small className="hint">{opt.hint}</small>
+              </span>
+            </label>
+          ))}
         </div>
       )}
 

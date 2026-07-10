@@ -96,10 +96,15 @@ export default function SplatViewer({ splatUrl, onError }: Props) {
         if (!resp.ok) throw new Error(`Could not download the scene (HTTP ${resp.status})`);
         const buffer = await resp.arrayBuffer();
         objectUrl = URL.createObjectURL(new Blob([buffer]));
-        await addScene(objectUrl, {
-          progressiveLoad: false,
-          format: GaussianSplats3D.SceneFormat.Splat,
-        });
+        // Blob URLs carry no extension, so pass the format explicitly.
+        const ext = splatUrl.split('?')[0].split('.').pop()?.toLowerCase();
+        const format =
+          ext === 'ply'
+            ? GaussianSplats3D.SceneFormat.Ply
+            : ext === 'ksplat'
+              ? GaussianSplats3D.SceneFormat.KSplat
+              : GaussianSplats3D.SceneFormat.Splat;
+        await addScene(objectUrl, { progressiveLoad: false, format });
       }
     };
 

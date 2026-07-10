@@ -73,6 +73,35 @@ def test_rejects_non_video(noop_client):
     assert resp.status_code == 415
 
 
+def test_quality_flows_to_trigger_and_payload(noop_client, storage):
+    resp = noop_client.post(
+        "/api/jobs",
+        files={"video": ("clip.mp4", TINY_MP4, "video/mp4")},
+        data={"metadata": '{"duration_sec": 10}', "quality": "high"},
+    )
+    assert resp.status_code == 201
+    app_trigger = noop_client.app.state.trigger
+    assert app_trigger.dispatched[-1][3] == "high"
+
+    # high-quality payloads carry a PLY upload target for the lossless archive
+    from spatialscan_api.jobs.trigger import build_payload
+
+    payload = build_payload("j1", "jobs/j1/input.mp4", {}, storage, quality="high")
+    assert payload["quality"] == "high"
+    assert "ply_put_url" in payload
+    balanced = build_payload("j2", "jobs/j2/input.mp4", {}, storage)
+    assert "ply_put_url" not in balanced
+
+
+def test_rejects_unknown_quality(noop_client):
+    resp = noop_client.post(
+        "/api/jobs",
+        files={"video": ("clip.mp4", TINY_MP4, "video/mp4")},
+        data={"metadata": '{"duration_sec": 10}', "quality": "ultra"},
+    )
+    assert resp.status_code == 422
+
+
 def test_rejects_bad_metadata(noop_client):
     resp = noop_client.post(
         "/api/jobs",

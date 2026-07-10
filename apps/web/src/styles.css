@@ -130,6 +130,19 @@ body {
   margin: 12px 0 0;
 }
 
+.quality-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.quality-row input {
+  margin-top: 4px;
+  accent-color: var(--accent);
+}
+
 .meta-row {
   display: flex;
   justify-content: space-between;
